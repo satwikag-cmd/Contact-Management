@@ -7,6 +7,7 @@ interface ContactFiltersProps {
   statusFilter: 'All' | 'Active' | 'Inactive';
   setStatusFilter: (value: 'All' | 'Active' | 'Inactive') => void;
   onAddContactClick: () => void;
+  onExportCSV: () => void;
 }
 
 export const ContactFilters: React.FC<ContactFiltersProps> = ({
@@ -15,6 +16,7 @@ export const ContactFilters: React.FC<ContactFiltersProps> = ({
   statusFilter,
   setStatusFilter,
   onAddContactClick,
+  onExportCSV, // Destructure the new function prop here!
 }) => {
   return (
     <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-xs flex flex-col md:flex-row gap-4 items-center justify-between mb-6">
@@ -66,6 +68,14 @@ export const ContactFilters: React.FC<ContactFiltersProps> = ({
             <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
           </svg>
           Add Contact
+        </button>
+
+        <button
+            type="button"
+            onClick={onExportCSV}
+            className="flex items-center gap-1.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 font-medium text-sm px-4 py-2 rounded-lg shadow-xs active:scale-95 transition-all cursor-pointer"
+            >
+            📥 Export CSV
         </button>
       </div>
 

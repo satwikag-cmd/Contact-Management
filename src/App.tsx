@@ -86,15 +86,44 @@ const DashboardWorkspace: React.FC = () => {
     }
   };
 
+  const handleExportCSV = () => {
+    if (filteredContacts.length === 0) return alert("No contact records available to export.");
+
+    // Define headers matching assignment requirements
+    const headers = ["First Name", "Last Name", "Email", "Phone", "Company", "Status", "Created Date"];
+    
+    const rows = filteredContacts.map(c => [
+      c.firstName,
+      c.lastName,
+      c.email,
+      c.phoneNumber,
+      c.companyName,
+      c.status,
+      c.createdDate
+    ]);
+
+    // Construct standard CSV string format
+    const csvContent = "data:text/csv;charset=utf-8," 
+      + [headers.join(","), ...rows.map(e => e.join(","))].join("\n");
+
+    // Trigger browser downloader anchor pipeline natively
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `Directory_Export_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   // Get the targeted name to display in delete message confirmation box safely
   const targetedDeleteName = contacts.find((c) => c.id === targetDeleteId);
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col justify-between">
 
-      <div className="absolute top-[-10%] left-[-10%] w-[50vw] h-[50vw] rounded-full bg-emerald-200/30 blur-[120px] mix-blend-multiply pointer-events-none animate-pulse duration-[8000ms]"></div>
-      <div className="absolute bottom-[-10%] right-[-10%] w-[40vw] h-[40vw] rounded-full bg-blue-200/20 blur-[100px] mix-blend-multiply pointer-events-none animate-pulse duration-[6000ms] delay-1000"></div>
-      {/* Structural Header Layer */}
+      <div className="absolute top-[-10%] left-[-10%] w-[50vw] h-[50vw] rounded-full bg-emerald-300/30 blur-[130px] mix-blend-multiply pointer-events-none animate-blob-one"></div>
+      <div className="absolute bottom-[-10%] right-[-10%] w-[45vw] h-[45vw] rounded-full bg-blue-300/30 blur-[110px] mix-blend-multiply pointer-events-none animate-blob-two"></div>
       <header className="bg-white border-b border-slate-200 sticky top-0 z-10 shadow-xs">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
           <div>
@@ -111,7 +140,9 @@ const DashboardWorkspace: React.FC = () => {
       {/* Main Workspace Layout */}
       <main className="max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-8 flex-grow">
         <ContactStats contacts={contacts} />
+
         <ContactFilters
+          onExportCSV={handleExportCSV}
           searchTerm={searchTerm}
           setSearchTerm={setSearchTerm}
           statusFilter={statusFilter}

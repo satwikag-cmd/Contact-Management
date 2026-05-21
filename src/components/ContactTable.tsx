@@ -95,7 +95,6 @@ export const ContactTable: React.FC<ContactTableProps> = ({ contacts, onView, on
                 <h4 className="font-semibold text-slate-900">{contact.firstName} {contact.lastName}</h4>
                 <p className="text-xs text-slate-500">{contact.companyName}</p>
               </div>
-              // Inside ContactTable status badge cell
                 <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${
                     contact.status === 'Active' 
                         ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' 
