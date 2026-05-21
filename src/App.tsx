@@ -120,13 +120,18 @@ const DashboardWorkspace: React.FC = () => {
   const targetedDeleteName = contacts.find((c) => c.id === targetDeleteId);
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col justify-between">
+    <div className="min-h-screen bg-slate-50 flex flex-col justify-between relative">
+      
+      {/* FIXED OVERFLOW CLIPPING WRAPPER FOR BACKGROUND BLOBS */}
+      <div className="absolute inset-0 w-full h-full min-h-screen overflow-hidden pointer-events-none z-0">
+        {/* Blob 1 */}
+        <div className="absolute top-[-15%] left-[-15%] w-[50vw] h-[50vw] rounded-full bg-emerald-300/25 blur-[120px] mix-blend-multiply animate-blob-one"></div>
+        {/* Blob 2 */}
+        <div className="absolute bottom-[-15%] right-[-15%] w-[45vw] h-[45vw] rounded-full bg-blue-300/25 blur-[110px] mix-blend-multiply animate-blob-two"></div>
+      </div>
 
-      {/* UPGRADED AMBIENT BACKGROUND GLOWS */}
-      <div className="absolute top-[-10%] left-[-10%] w-[50vw] h-[50vw] rounded-full bg-emerald-300/30 blur-[130px] mix-blend-multiply pointer-events-none animate-blob-one"></div>
-      <div className="absolute bottom-[-10%] right-[-10%] w-[45vw] h-[45vw] rounded-full bg-blue-300/30 blur-[110px] mix-blend-multiply pointer-events-none animate-blob-two"></div>
-
-      <header className="bg-white border-b border-slate-200 sticky top-0 z-10 shadow-xs">
+      {/* Header View - Ensure z-20 keeps it sitting neatly above the background mask */}
+      <header className="bg-white/80 backdrop-blur-md border-b border-slate-200 sticky top-0 z-20 shadow-xs">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
           <div>
             <h1 className="text-xl font-bold text-slate-900 tracking-tight">ContactHub</h1>
