@@ -6,6 +6,7 @@ import { ContactTable } from './components/ContactTable';
 import { ContactFormModal } from './components/ContactFormModal';
 import { ContactViewModal } from './components/ContactViewModal';
 import { DeleteConfirmModal } from './components/DeleteConfirmModal';
+import { ContactStats } from './components/ContactStats';
 import type { Contact } from './types/contact';
 
 const DashboardWorkspace: React.FC = () => {
@@ -90,6 +91,9 @@ const DashboardWorkspace: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col justify-between">
+
+      <div className="absolute top-[-10%] left-[-10%] w-[50vw] h-[50vw] rounded-full bg-emerald-200/30 blur-[120px] mix-blend-multiply pointer-events-none animate-pulse duration-[8000ms]"></div>
+      <div className="absolute bottom-[-10%] right-[-10%] w-[40vw] h-[40vw] rounded-full bg-blue-200/20 blur-[100px] mix-blend-multiply pointer-events-none animate-pulse duration-[6000ms] delay-1000"></div>
       {/* Structural Header Layer */}
       <header className="bg-white border-b border-slate-200 sticky top-0 z-10 shadow-xs">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
@@ -106,6 +110,7 @@ const DashboardWorkspace: React.FC = () => {
 
       {/* Main Workspace Layout */}
       <main className="max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-8 flex-grow">
+        <ContactStats contacts={contacts} />
         <ContactFilters
           searchTerm={searchTerm}
           setSearchTerm={setSearchTerm}
