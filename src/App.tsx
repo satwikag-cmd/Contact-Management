@@ -122,8 +122,10 @@ const DashboardWorkspace: React.FC = () => {
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col justify-between">
 
+      {/* UPGRADED AMBIENT BACKGROUND GLOWS */}
       <div className="absolute top-[-10%] left-[-10%] w-[50vw] h-[50vw] rounded-full bg-emerald-300/30 blur-[130px] mix-blend-multiply pointer-events-none animate-blob-one"></div>
       <div className="absolute bottom-[-10%] right-[-10%] w-[45vw] h-[45vw] rounded-full bg-blue-300/30 blur-[110px] mix-blend-multiply pointer-events-none animate-blob-two"></div>
+
       <header className="bg-white border-b border-slate-200 sticky top-0 z-10 shadow-xs">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
           <div>
