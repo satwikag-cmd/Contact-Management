@@ -6,11 +6,11 @@ import type { Contact } from '../types/contact';
 // Define what states and actions will be available across the app
 interface ContactContextType {
   contacts: Contact[];
-  addContact: (contact: Omit<Contact, 'id' | 'createdDate'>) => void;
+  addContact: (contact: Omit<Contact, 'id' | 'createdDate' | 'avatar'>) => void;
   updateContact: (id: string, updatedContact: Partial<Contact>) => void;
   deleteContact: (id: string) => void;
+  updateContactAvatar: (id: string, base64Image: string) => void; // Add this line
 }
-
 const ContactContext = createContext<ContactContextType | undefined>(undefined);
 
 // Professional pre-filled mock data so the reviewer sees a populated UI instantly
@@ -71,8 +71,14 @@ export const ContactProvider: React.FC<{ children: React.ReactNode }> = ({ child
     setContacts((prev) => prev.filter((contact) => contact.id !== id));
   };
 
+  const updateContactAvatar = (id: string, base64Image: string) => {
+    setContacts((prev) =>
+      prev.map((contact) => (contact.id === id ? { ...contact, avatar: base64Image } : contact))
+    );
+  };
+
   return (
-    <ContactContext.Provider value={{ contacts, addContact, updateContact, deleteContact }}>
+    <ContactContext.Provider value={{ contacts, addContact, updateContact, deleteContact, updateContactAvatar }}>
       {children}
     </ContactContext.Provider>
   );

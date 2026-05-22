@@ -36,27 +36,27 @@ export const ContactTable: React.FC<ContactTableProps> = ({ contacts, onView, on
   }
 
   return (
-    <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-xs">
-      
-      {/* Desktop Layout View (Hidden on mobile devices) */}
-      <div className="hidden md:block overflow-x-auto">
-        <table className="w-full text-left border-collapse">
-          <thead>
-            <tr className="bg-slate-50 border-b border-slate-200 text-xs font-bold text-slate-500 uppercase tracking-wider">
-              <th className="px-6 py-3.5">Name</th>
-              <th className="px-6 py-3.5">Email</th>
-              <th className="px-6 py-3.5">Phone</th>
-              <th className="px-6 py-3.5">Company</th>
-              <th className="px-6 py-3.5">Status</th>
-              <th className="px-6 py-3.5 text-right">Actions</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100 text-sm text-slate-700">
-            {contacts.map((contact) => (
-              <tr key={contact.id} className="hover:bg-slate-50/70 transition-colors">
-                <td className="px-6 py-4 font-medium text-slate-900">
-                  {contact.firstName} {contact.lastName}
-                </td>
+  <div className="glassic-card rounded-2xl overflow-hidden shadow-xs border border-slate-200/80 transition-all duration-300">
+    
+    {/* Desktop Layout View */}
+    <div className="hidden md:block overflow-x-auto">
+      <table className="w-full text-left border-collapse">
+        <thead>
+          <tr className="bg-white/50 border-b border-slate-200 text-xs font-bold text-slate-500 uppercase tracking-wider">
+            <th className="px-6 py-4">Name</th>
+            <th className="px-6 py-4">Email</th>
+            <th className="px-6 py-4">Phone</th>
+            <th className="px-6 py-4">Company</th>
+            <th className="px-6 py-4">Status</th>
+            <th className="px-6 py-4 text-right">Actions</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-slate-100 text-xs text-slate-700 font-medium">
+          {contacts.map((contact) => (
+            <tr key={contact.id} className="hover:bg-white/70 transition-all duration-150 group">
+              <td className="px-6 py-3.5 font-bold text-slate-900 group-hover:text-emerald-700 transition-colors">
+                {contact.firstName} {contact.lastName}
+              </td>
                 <td className="px-6 py-4 text-slate-500">{contact.email}</td>
                 <td className="px-6 py-4 text-slate-500">{contact.phoneNumber}</td>
                 <td className="px-6 py-4 text-slate-600 font-medium">{contact.companyName}</td>

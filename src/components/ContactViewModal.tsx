@@ -1,6 +1,7 @@
 // src/components/ContactViewModal.tsx
-import React from 'react';
+import React, { useRef } from 'react';
 import type { Contact } from '../types/contact';
+import { useContacts } from '../context/ContactContext';
 
 interface ContactViewModalProps {
   isOpen: boolean;
@@ -9,9 +10,11 @@ interface ContactViewModalProps {
 }
 
 export const ContactViewModal: React.FC<ContactViewModalProps> = ({ isOpen, onClose, contact }) => {
+  const { updateContactAvatar } = useContacts();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   if (!isOpen || !contact) return null;
 
-  // Format Date Helper
   const formatDate = (isoString: string) => {
     return new Date(isoString).toLocaleDateString('en-IN', {
       day: 'numeric',
@@ -22,8 +25,32 @@ export const ContactViewModal: React.FC<ContactViewModalProps> = ({ isOpen, onCl
     });
   };
 
+  // Base64 file converter logic
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validate file size limit for localStorage boundaries (Limit to 1.5MB to be safe)
+    if (file.size > 1.5 * 1024 * 1024) {
+      alert("Image is too large. Please upload an image smaller than 1.5MB.");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      if (typeof reader.result === 'string') {
+        updateContactAvatar(contact.id, reader.result);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const triggerFileSelector = () => {
+    fileInputRef.current?.click();
+  };
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs animate-fadeIn">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs animate-fade-in">
       <div className="bg-white rounded-2xl shadow-xl border border-slate-200 w-full max-w-md overflow-hidden">
         
         {/* Modal Header */}
@@ -36,21 +63,56 @@ export const ContactViewModal: React.FC<ContactViewModalProps> = ({ isOpen, onCl
           </button>
         </div>
 
-        {/* Modal Body / Information Sheet */}
+        {/* Modal Body */}
         <div className="p-6 space-y-6">
           
-          {/* Profile Header Avatar */}
+          {/* Profile Header Avatar Section with Interactive Upload Trigger */}
           <div className="flex items-center gap-4 pb-4 border-b border-slate-100">
-            <div className="h-14 w-14 rounded-full bg-emerald-50 border border-emerald-200 flex items-center justify-center text-emerald-700 font-bold text-xl uppercase shadow-xs">
-              {contact.firstName[0]}{contact.lastName[0]}
+            
+            {/* Hidden Input File Element */}
+            <input 
+              type="file" 
+              ref={fileInputRef} 
+              onChange={handleImageUpload} 
+              accept="image/*" 
+              className="hidden" 
+            />
+
+            {/* Interactive Image Container */}
+            <div 
+              onClick={triggerFileSelector}
+              className="relative h-16 w-16 rounded-full group overflow-hidden bg-emerald-50 border border-emerald-200 flex items-center justify-center cursor-pointer transition-transform hover:scale-105 active:scale-95 shadow-sm"
+              title="Click to add/change profile image"
+            >
+              {contact.avatar ? (
+                <img 
+                  src={contact.avatar} 
+                  alt="Profile" 
+                  className="h-full w-full object-cover"
+                />
+              ) : (
+                <span className="text-emerald-700 font-bold text-xl uppercase">
+                  {contact.firstName[0]}{contact.lastName[0]}
+                </span>
+              )}
+
+              {/* Sleek Hover Action Glass Layer Overlay */}
+              <div className="absolute inset-0 bg-slate-900/40 opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center text-[9px] font-bold text-white tracking-wide transition-opacity duration-200">
+                <svg className="h-4 w-4 mb-0.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+                UPLOAD
+              </div>
             </div>
+
             <div>
               <h4 className="text-lg font-bold text-slate-900">{contact.firstName} {contact.lastName}</h4>
               <p className="text-sm font-medium text-slate-500">{contact.companyName}</p>
             </div>
           </div>
 
-          {/* Details Metadata List */}
+          {/* Details List */}
           <div className="space-y-4 text-sm">
             <div className="flex flex-col sm:flex-row sm:justify-between border-b border-slate-50 pb-2">
               <span className="font-semibold text-slate-400 text-xs uppercase tracking-wider">Email Address</span>

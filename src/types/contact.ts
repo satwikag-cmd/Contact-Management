@@ -9,6 +9,7 @@ export interface Contact {
   companyName: string;
   status: 'Active' | 'Inactive';
   createdDate: string;
+  avatar?: string;
 }
 
 // Adding an empty default export guarantees the bundler treats this as a valid ES module
