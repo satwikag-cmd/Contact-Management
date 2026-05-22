@@ -63,23 +63,31 @@ export const ContactFormModal: React.FC<ContactFormModalProps> = ({
   if (!isOpen) return null;
 
   // 3. Native Form Validation Logics [cite: 35, 43]
+  // Inside src/components/ContactFormModal.tsx
+
   const validateForm = (): boolean => {
     const newErrors: FormErrors = {};
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     
-    // Custom validation criteria matching standard enterprise security rules
-    if (!formData.firstName.trim()) newErrors.firstName = 'First name is required [cite: 35, 43]';
-    if (!formData.lastName.trim()) newErrors.lastName = 'Last name is required [cite: 35, 43]';
-    if (!formData.companyName.trim()) newErrors.companyName = 'Company name is required [cite: 35, 43]';
+    // Enterprise Phone Regex: Accepts spaces, dashes, parentheses, international plus codes, and 7-15 digits
+    const phoneRegex = /^\+?[0-9\s\-()]{7,15}$/;
     
+    if (!formData.firstName.trim()) newErrors.firstName = 'First name is required';
+    if (!formData.lastName.trim()) newErrors.lastName = 'Last name is required';
+    if (!formData.companyName.trim()) newErrors.companyName = 'Company name is required';
+    
+    // Email Validation Layer
     if (!formData.email.trim()) {
-      newErrors.email = 'Email address is required [cite: 35, 43]';
+      newErrors.email = 'Email address is required';
     } else if (!emailRegex.test(formData.email)) {
-      newErrors.email = 'Please enter a valid email address [cite: 43]';
+      newErrors.email = 'Please enter a valid email address';
     }
 
+    // UPGRADED: Phone Number Validation Layer
     if (!formData.phoneNumber.trim()) {
-      newErrors.phoneNumber = 'Phone number is required [cite: 35, 43]';
+      newErrors.phoneNumber = 'Phone number is required';
+    } else if (!phoneRegex.test(formData.phoneNumber)) {
+      newErrors.phoneNumber = 'Please enter a valid phone number (e.g., +91 98765 43210)';
     }
 
     setErrors(newErrors);
