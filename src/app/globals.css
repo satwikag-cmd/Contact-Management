@@ -1,3 +1,58 @@
+@import "tailwindcss";
+
+body {
+  background-color: #f8fafc;
+  color: #0f172a;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+
+/* Glassmorphism Global Utilities */
+.glassic-card {
+  background: rgba(255, 255, 255, 0.45);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.6);
+}
+
+/* Hide default cursor globally for interactive desktop screens */
+@media (min-width: 768px) {
+  body, button, input, select, a, [role="button"] {
+    cursor: none !important;
+  }
+}
+
+/* Custom Animation Keyframes */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes scaleUp {
+  from { transform: scale(0.96); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+
+@keyframes ambientGlow {
+  0%, 100% { transform: scale(1) translate(0px, 0px); opacity: 0.2; }
+  50% { transform: scale(1.05) translate(10px, -5px); opacity: 0.35; }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.2s ease-out forwards;
+}
+
+.animate-scale-up {
+  animation: scaleUp 0.22s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+@theme {
+  --animate-blob-one: ambientGlow 10s ease-in-out infinite;
+  --animate-blob-two: ambientGlow 14s ease-in-out infinite reverse;
+}
+
+
 .counter {
   font-size: 16px;
   padding: 5px 10px;

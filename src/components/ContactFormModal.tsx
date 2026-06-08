@@ -5,7 +5,7 @@ import type { Contact } from '../types/contact';
 interface ContactFormModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSave: (contactData: Omit<Contact, 'id' | 'createdDate'>) => void;
+  onSave: (contactData: Omit<Contact, 'id' | 'createdAt' | 'lastActivityAt' | 'tags'>) => void;
   editingContact: Contact | null;
 }
 
@@ -13,8 +13,7 @@ interface FormErrors {
   firstName?: string;
   lastName?: string;
   email?: string;
-  phoneNumber?: string;
-  companyName?: string;
+  mobileNumber?: string;
 }
 
 export const ContactFormModal: React.FC<ContactFormModalProps> = ({
@@ -23,38 +22,35 @@ export const ContactFormModal: React.FC<ContactFormModalProps> = ({
   onSave,
   editingContact,
 }) => {
-  // 1. Unified Form State
   const [formData, setFormData] = useState({
     firstName: '',
     lastName: '',
     email: '',
-    phoneNumber: '',
-    companyName: '',
-    status: 'Active' as 'Active' | 'Inactive',
+    mobileNumber: '',
+    location: '',
+    isDeleted: false, // Local tracking flag for status toggles
   });
 
-  // 2. Local Validation Errors State
   const [errors, setErrors] = useState<FormErrors>({});
 
-  // Populate fields if we are editing an existing record [cite: 21, 36]
   useEffect(() => {
     if (editingContact) {
       setFormData({
-        firstName: editingContact.firstName,
-        lastName: editingContact.lastName,
-        email: editingContact.email,
-        phoneNumber: editingContact.phoneNumber,
-        companyName: editingContact.companyName,
-        status: editingContact.status,
+        firstName: editingContact.firstName || '',
+        lastName: editingContact.lastName || '',
+        email: editingContact.email || '',
+        mobileNumber: editingContact.mobileNumber || '',
+        location: editingContact.location || '',
+        isDeleted: !!editingContact.isDeleted,
       });
     } else {
       setFormData({
         firstName: '',
         lastName: '',
         email: '',
-        phoneNumber: '',
-        companyName: '',
-        status: 'Active',
+        mobileNumber: '',
+        location: '',
+        isDeleted: false,
       });
     }
     setErrors({});
@@ -62,32 +58,20 @@ export const ContactFormModal: React.FC<ContactFormModalProps> = ({
 
   if (!isOpen) return null;
 
-  // 3. Native Form Validation Logics [cite: 35, 43]
-  // Inside src/components/ContactFormModal.tsx
-
   const validateForm = (): boolean => {
     const newErrors: FormErrors = {};
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    
-    // Enterprise Phone Regex: Accepts spaces, dashes, parentheses, international plus codes, and 7-15 digits
     const phoneRegex = /^\+?[0-9\s\-()]{7,15}$/;
     
     if (!formData.firstName.trim()) newErrors.firstName = 'First name is required';
     if (!formData.lastName.trim()) newErrors.lastName = 'Last name is required';
-    if (!formData.companyName.trim()) newErrors.companyName = 'Company name is required';
     
-    // Email Validation Layer
-    if (!formData.email.trim()) {
-      newErrors.email = 'Email address is required';
-    } else if (!emailRegex.test(formData.email)) {
+    if (formData.email.trim() && !emailRegex.test(formData.email)) {
       newErrors.email = 'Please enter a valid email address';
     }
 
-    // UPGRADED: Phone Number Validation Layer
-    if (!formData.phoneNumber.trim()) {
-      newErrors.phoneNumber = 'Phone number is required';
-    } else if (!phoneRegex.test(formData.phoneNumber)) {
-      newErrors.phoneNumber = 'Please enter a valid phone number (e.g., +91 98765 43210)';
+    if (formData.mobileNumber.trim() && !phoneRegex.test(formData.mobileNumber)) {
+      newErrors.mobileNumber = 'Please enter a valid mobile number';
     }
 
     setErrors(newErrors);
@@ -97,19 +81,25 @@ export const ContactFormModal: React.FC<ContactFormModalProps> = ({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (validateForm()) {
-      onSave(formData);
+      onSave({
+        firstName: formData.firstName.trim(),
+        lastName: formData.lastName.trim(),
+        email: formData.email.trim() || null,
+        mobileNumber: formData.mobileNumber.trim() || null,
+        location: formData.location.trim() || undefined,
+        isDeleted: formData.isDeleted, // Pass the boolean flag down to App.tsx
+      });
       onClose();
     }
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-md劇 animate-fade-in">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-md animate-fade-in">
       <div className="bg-white rounded-2xl shadow-xl border border-slate-200 w-full max-w-lg overflow-hidden flex flex-col animate-scale-up">
         
-        {/* Modal Header */}
         <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
           <h3 className="text-base font-bold text-slate-900">
-            {editingContact ? 'Edit Contact Details [cite: 21, 36]' : 'Create New Contact Record [cite: 20]'}
+            {editingContact ? 'Edit Contact Details' : 'Create New Contact Record'}
           </h3>
           <button type="button" onClick={onClose} className="text-slate-400 hover:text-slate-600 transition-colors cursor-pointer">
             <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -118,10 +108,8 @@ export const ContactFormModal: React.FC<ContactFormModalProps> = ({
           </button>
         </div>
 
-        {/* Modal Body / Input Form [cite: 8] */}
         <form onSubmit={handleSubmit} className="p-6 space-y-4 overflow-y-auto">
           
-          {/* Row 1: Names [cite: 9, 10] */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1">First Name *</label>
@@ -149,11 +137,11 @@ export const ContactFormModal: React.FC<ContactFormModalProps> = ({
             </div>
           </div>
 
-          {/* Row 2: Contact Data Fields [cite: 11, 12] */}
           <div>
-            <label className="block text-xs font-semibold text-slate-700 mb-1">Email Address *</label>
+            <label className="block text-xs font-semibold text-slate-700 mb-1">Email Address</label>
             <input
               type="text"
+              placeholder="example@kasplo.com"
               value={formData.email}
               onChange={(e) => setFormData({ ...formData, email: e.target.value })}
               className={`w-full px-3 py-2 border rounded-lg text-sm bg-slate-50 focus:outline-none focus:ring-2 transition-all ${
@@ -164,62 +152,57 @@ export const ContactFormModal: React.FC<ContactFormModalProps> = ({
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-slate-700 mb-1">Phone Number *</label>
+            <label className="block text-xs font-semibold text-slate-700 mb-1">Mobile Number</label>
             <input
               type="text"
-              value={formData.phoneNumber}
-              onChange={(e) => setFormData({ ...formData, phoneNumber: e.target.value })}
+              placeholder="e.g., +91 98765 43210"
+              value={formData.mobileNumber}
+              onChange={(e) => setFormData({ ...formData, mobileNumber: e.target.value })}
               className={`w-full px-3 py-2 border rounded-lg text-sm bg-slate-50 focus:outline-none focus:ring-2 transition-all ${
-                errors.phoneNumber ? 'border-red-300 focus:ring-red-500' : 'border-slate-200 focus:ring-emerald-500'
+                errors.mobileNumber ? 'border-red-300 focus:ring-red-500' : 'border-slate-200 focus:ring-emerald-500'
               }`}
             />
-            {errors.phoneNumber && <p className="text-red-500 text-xs mt-1 font-medium">{errors.phoneNumber}</p>}
+            {errors.mobileNumber && <p className="text-red-500 text-xs mt-1 font-medium">{errors.mobileNumber}</p>}
           </div>
 
-          {/* Row 3: Company Setup [cite: 13] */}
           <div>
-            <label className="block text-xs font-semibold text-slate-700 mb-1">Company Name *</label>
+            <label className="block text-xs font-semibold text-slate-700 mb-1">Location City</label>
             <input
               type="text"
-              value={formData.companyName}
-              onChange={(e) => setFormData({ ...formData, companyName: e.target.value })}
-              className={`w-full px-3 py-2 border rounded-lg text-sm bg-slate-50 focus:outline-none focus:ring-2 transition-all ${
-                errors.companyName ? 'border-red-300 focus:ring-red-500' : 'border-slate-200 focus:ring-emerald-500'
-              }`}
+              placeholder="e.g., Kurnool"
+              value={formData.location}
+              onChange={(e) => setFormData({ ...formData, location: e.target.value })}
+              className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-slate-50 focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-all"
             />
-            {errors.companyName && <p className="text-red-500 text-xs mt-1 font-medium">{errors.companyName}</p>}
           </div>
 
-          {/* Row 4: Status Fields Toggle [cite: 14] */}
+          {/* Added Status Selection Toggles Map directly to unified isDeleted Boolean values */}
           <div>
-            <label className="block text-xs font-semibold text-slate-700 mb-2">Account Operational Status [cite: 14]</label>
+            <label className="block text-xs font-semibold text-slate-700 mb-2">Account Operational Status</label>
             <div className="flex gap-4">
               <label className="inline-flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
                 <input
                   type="radio"
-                  name="status"
-                  value="Active"
-                  checked={formData.status === 'Active'}
-                  onChange={() => setFormData({ ...formData, status: 'Active' })}
+                  name="isDeleted"
+                  checked={formData.isDeleted === false}
+                  onChange={() => setFormData({ ...formData, isDeleted: false })}
                   className="accent-emerald-600 h-4 w-4"
                 />
-                Active [cite: 14]
+                Active
               </label>
               <label className="inline-flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
                 <input
                   type="radio"
-                  name="status"
-                  value="Inactive"
-                  checked={formData.status === 'Inactive'}
-                  onChange={() => setFormData({ ...formData, status: 'Inactive' })}
+                  name="isDeleted"
+                  checked={formData.isDeleted === true}
+                  onChange={() => setFormData({ ...formData, isDeleted: true })}
                   className="accent-slate-600 h-4 w-4"
                 />
-                Inactive [cite: 14]
+                Inactive
               </label>
             </div>
           </div>
 
-          {/* Footer Interactive Actions */}
           <div className="flex justify-end gap-3 pt-4 border-t border-slate-100 mt-6">
             <button
               type="button"
@@ -232,7 +215,7 @@ export const ContactFormModal: React.FC<ContactFormModalProps> = ({
               type="submit"
               className="px-4 py-2 text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 active:scale-98 rounded-lg shadow-xs transition-all cursor-pointer"
             >
-              {editingContact ? 'Save Modifications [cite: 36]' : 'Register Contact [cite: 20]'}
+              {editingContact ? 'Save Modifications' : 'Register Contact'}
             </button>
           </div>
 

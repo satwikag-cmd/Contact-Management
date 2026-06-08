@@ -1,94 +1,101 @@
 // src/context/ContactContext.tsx
+'use client';
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import type { Contact } from '../types/contact';
 
-// Define what states and actions will be available across the app
 interface ContactContextType {
   contacts: Contact[];
-  addContact: (contact: Omit<Contact, 'id' | 'createdDate' | 'avatar'>) => void;
+  addContact: (contact: Omit<Contact, 'id' | 'createdAt' | 'lastActivityAt' | 'isDeleted' | 'tags'>) => void;
   updateContact: (id: string, updatedContact: Partial<Contact>) => void;
   deleteContact: (id: string) => void;
-  updateContactAvatar: (id: string, base64Image: string) => void; // Add this line
+  clearAllDuplicates: () => void; // Added cleanup trigger handle
 }
+
 const ContactContext = createContext<ContactContextType | undefined>(undefined);
 
-// Professional pre-filled mock data so the reviewer sees a populated UI instantly
-const INITIAL_MOCK_DATA: Contact[] = [
-  {
-    id: '1',
-    firstName: 'Arjun',
-    lastName: 'Sharma',
-    email: 'arjun.sharma@example.com',
-    phoneNumber: '+91 98765 43210',
-    companyName: 'Tech India Labs',
-    status: 'Active',
-    createdDate: new Date('2026-01-15').toISOString(),
-  },
-  {
-    id: '2',
-    firstName: 'Priya',
-    lastName: 'Patel',
-    email: 'priya.patel@designco.in',
-    phoneNumber: '+91 87654 32109',
-    companyName: 'Creative Canvas',
-    status: 'Inactive',
-    createdDate: new Date('2026-03-22').toISOString(),
-  },
-];
-
 export const ContactProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  // Initialize state from localStorage, or fall back to mock data if empty
-  const [contacts, setContacts] = useState<Contact[]>(() => {
-    const savedContacts = localStorage.getItem('cms_contacts');
-    return savedContacts ? JSON.parse(savedContacts) : INITIAL_MOCK_DATA;
-  });
+  const [contacts, setContacts] = useState<Contact[]>([]);
 
-  // Sync state changes to localStorage automatically
   useEffect(() => {
-    localStorage.setItem('cms_contacts', JSON.stringify(contacts));
+    const savedContacts = localStorage.getItem('cms_contacts');
+    if (savedContacts) {
+      setContacts(JSON.parse(savedContacts));
+    }
+  }, []);
+
+  useEffect(() => {
+    if (contacts.length > 0) {
+      localStorage.setItem('cms_contacts', JSON.stringify(contacts));
+    }
   }, [contacts]);
 
-  // Action: Add Contact
-  const addContact = (newContactData: Omit<Contact, 'id' | 'createdDate'>) => {
+  const addContact = (newContactData: Omit<Contact, 'id' | 'createdAt' | 'lastActivityAt' | 'isDeleted' | 'tags'>) => {
     const newContact: Contact = {
       ...newContactData,
-      id: crypto.randomUUID(), // Generates a secure, unique identifier string
-      createdDate: new Date().toISOString(),
+      id: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2, 11),
+      tags: [],
+      createdAt: new Date().toISOString(),
+      lastActivityAt: new Date().toISOString(),
+      isDeleted: false,
     };
     setContacts((prev) => [newContact, ...prev]);
   };
 
-  // Action: Edit/Update Contact
   const updateContact = (id: string, updatedFields: Partial<Contact>) => {
     setContacts((prev) =>
-      prev.map((contact) => (contact.id === id ? { ...contact, ...updatedFields } : contact))
+      prev.map((contact) =>
+        contact.id === id ? { ...contact, ...updatedFields, lastActivityAt: new Date().toISOString() } : contact
+      )
     );
   };
 
-  // Action: Delete Contact
   const deleteContact = (id: string) => {
     setContacts((prev) => prev.filter((contact) => contact.id !== id));
   };
 
-  const updateContactAvatar = (id: string, base64Image: string) => {
-    setContacts((prev) =>
-      prev.map((contact) => (contact.id === id ? { ...contact, avatar: base64Image } : contact))
-    );
+  // --- GLOBAL DE-DUPLICATION ENGINE SYSTEM ---
+  const clearAllDuplicates = () => {
+    setContacts((prevContacts) => {
+      const seenEmails = new Set<string>();
+      const seenPhones = new Set<string>();
+      const uniqueContacts: Contact[] = [];
+      let duplicateCount = 0;
+
+      // Scan backwards (keep the newest added entries, drop the older duplicates)
+      prevContacts.forEach((contact) => {
+        const emailKey = contact.email?.toLowerCase().trim();
+        // Normalize phone number by removing spaces, dashes, and parentheses
+        const phoneKey = contact.mobileNumber?.replace(/[\s\-()]/g, '');
+
+        let isDuplicate = false;
+
+        if (emailKey && seenEmails.has(emailKey)) isDuplicate = true;
+        if (phoneKey && seenPhones.has(phoneKey)) isDuplicate = true;
+
+        if (isDuplicate) {
+          duplicateCount++;
+        } else {
+          if (emailKey) seenEmails.add(emailKey);
+          if (phoneKey) seenPhones.add(phoneKey);
+          uniqueContacts.push(contact);
+        }
+      });
+
+      alert(`Database Sweep Settled:\nIdentified and purged ${duplicateCount} duplicate row records from index maps.`);
+      return uniqueContacts;
+    });
   };
 
   return (
-    <ContactContext.Provider value={{ contacts, addContact, updateContact, deleteContact, updateContactAvatar }}>
+    <ContactContext.Provider value={{ contacts, addContact, updateContact, deleteContact, clearAllDuplicates }}>
       {children}
     </ContactContext.Provider>
   );
 };
 
-// Custom hook to consume the contact state effortlessly in components
 export const useContacts = () => {
   const context = useContext(ContactContext);
-  if (!context) {
-    throw new Error('useContacts must be used within a ContactProvider');
-  }
+  if (!context) throw new Error('useContacts must be used within a ContactProvider');
   return context;
 };
