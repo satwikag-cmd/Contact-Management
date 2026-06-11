@@ -2,14 +2,14 @@ import axios, { AxiosError } from 'axios';
 import { type ApiErrorResponse } from '../types/api';
 import { env } from '../utils/env';
 
-const API_BASE_URL = env.NEXT_PUBLIC_API_URL;
 
 export const apiClient = axios.create({
-  baseURL: API_BASE_URL,
+  baseURL: env.NEXT_PUBLIC_API_URL,
   headers: {
     'Content-Type': 'application/json',
+    // Passes his security gate automatically on every request
+    'X-API-Key': env.NEXT_PUBLIC_API_KEY, 
   },
-  timeout: 15000,
 });
 
 // Request Interceptor: Inject Authorization tokens or multi-tenant headers dynamically

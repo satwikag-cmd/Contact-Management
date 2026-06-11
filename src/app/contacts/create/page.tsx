@@ -6,8 +6,11 @@ import { useContactQueries } from '../../../hooks/useContactQueries';
 
 export default function CreateContactPage() {
   const router = useRouter();
-  const { useCreateContact } = useContactQueries();
+  const { useCreateContact, useFetchGlobalTags } = useContactQueries();
   const createMutation = useCreateContact();
+  
+  // 📡 Dynamically fetch the master configuration taxonomy tags list from local state cache
+  const { data: globalTags = [] } = useFetchGlobalTags();
   
   const [form, setForm] = useState({
     firstName: '',
@@ -16,10 +19,20 @@ export default function CreateContactPage() {
     mobileNumber: '',
     gender: 'Male',
     dateOfBirth: '',
-    location: ''
+    city: '',
+    state: '',
+    country: ''
   });
   
+  // Tracker array string to manage selected tag names
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [validationError, setValidationError] = useState<string | null>(null);
+
+  const handleTagCheckboxToggle = (tagName: string) => {
+    setSelectedTags(prev => 
+      prev.includes(tagName) ? prev.filter(t => t !== tagName) : [...prev, tagName]
+    );
+  };
 
   const handleFormSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -35,20 +48,49 @@ export default function CreateContactPage() {
     }
 
     try {
-      // Execute background mutation to sync into corporate database tables
       await createMutation.mutateAsync({
-        firstName: form.firstName.trim(),
-        lastName: form.lastName.trim(),
+        first_name: form.firstName.trim(),
+        last_name: form.lastName.trim(),
         email: form.email.trim() || null,
-        mobileNumber: form.mobileNumber.trim() || null,
-        location: form.location.trim() || undefined,
-        gender: form.gender as any,
-        dateOfBirth: form.dateOfBirth || undefined
-      });
+        mobile_number: form.mobileNumber.trim() || null,
+        gender: form.gender.toLowerCase(),
+        date_of_birth: form.dateOfBirth || null, 
+        city: form.city.trim() || null,
+        state: form.state.trim() || null,
+        country: form.country.trim() || null,
+        tags: selectedTags 
+      } as any);
 
       router.push('/contacts');
-    } catch (err: any) {
-      setValidationError(err?.message || 'API Mutation failed. Check console trace logs.');
+    } catch (serverError: any) {
+      // 🛠️ 1. LOG THE CLEANED ERROR OBJECT FROM THE NEW HOOK PIPELINE
+      console.log("--- CLEANED HOOK ERROR ---", serverError);
+
+      if (serverError) {
+        // Path A & B: If it's a validation map directly or nested under an 'errors' key
+        const possibleMap = serverError.errors || serverError.message || serverError;
+
+        if (possibleMap && typeof possibleMap === 'object' && !Array.isArray(possibleMap)) {
+          const errorMessages = Object.values(possibleMap);
+          if (errorMessages.length > 0) {
+            setValidationError(String(errorMessages[0]));
+            return;
+          }
+        }
+        
+        // Path C: If it's sent back as a simple text string layout
+        if (typeof serverError === 'string') {
+          setValidationError(serverError);
+          return;
+        }
+        if (typeof serverError.message === 'string') {
+          setValidationError(serverError.message);
+          return;
+        }
+      }
+
+      // 🛠️ 3. FINAL FALLBACK IF THE ENTRIES BREAK RADICALLY
+      setValidationError('The data is already associated or an unexpected error occurred.');
     }
   };
 
@@ -99,13 +141,53 @@ export default function CreateContactPage() {
           </div>
           <div>
             <label className="block text-[10px] font-black text-slate-400 uppercase tracking-wider mb-1">Date of Birth</label>
-            <input type="date" value={form.dateOfBirth} onChange={e => setForm({...form, dateOfBirth: e.target.value})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none" />
+            <input type="date" value={form.dateOfBirth} onChange={e => setForm({...form, dateOfBirth: e.target.value})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none cursor-pointer" />
           </div>
         </div>
 
-        <div>
-          <label className="block text-[10px] font-black text-slate-400 uppercase tracking-wider mb-1">Location City</label>
-          <input type="text" placeholder="e.g. Kurnool" value={form.location} onChange={e => setForm({...form, location: e.target.value})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none" />
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 border-t border-slate-100">
+          <div>
+            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-wider mb-1">Location City</label>
+            <input type="text" placeholder="Kurnool" value={form.city} onChange={e => setForm({...form, city: e.target.value})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none" />
+          </div>
+          <div>
+            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-wider mb-1">State / Province</label>
+            <input type="text" placeholder="AP" value={form.state} onChange={e => setForm({...form, state: e.target.value})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none" />
+          </div>
+          <div>
+            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-wider mb-1">Country</label>
+            <input type="text" placeholder="India" value={form.country} onChange={e => setForm({...form, country: e.target.value})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none" />
+          </div>
+        </div>
+
+        {/* 🏷️ DYNAMIC GLOBAL CHIPS TAXONOMY OPTIONS BLOCK */}
+        <div className="pt-2 border-t border-slate-100">
+          <label className="block text-[10px] font-black text-slate-400 uppercase tracking-wider mb-2">Assign Profile Tags (Global Taxonomies Rulebook)</label>
+          {globalTags.length > 0 ? (
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              {globalTags.map((tag: any) => {
+                const tagString = typeof tag === 'string' ? tag : tag.name; 
+                const isChecked = selectedTags.includes(tagString);
+                return (
+                  <label key={tagString} className={`flex items-center justify-between p-2 rounded-xl border transition-all cursor-pointer select-none ${
+                    isChecked ? 'border-blue-500 bg-blue-50/20' : 'border-slate-100 bg-slate-50/50 hover:bg-slate-50'
+                  }`}>
+                    <span className="text-xs font-bold text-slate-700">{tagString}</span>
+                    <input 
+                      type="checkbox" 
+                      checked={isChecked} 
+                      onChange={() => handleTagCheckboxToggle(tagString)}
+                      className="accent-blue-600 h-3.5 w-3.5 cursor-pointer" 
+                    />
+                  </label>
+                );
+              })}
+            </div>
+          ) : (
+            <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wide italic bg-slate-50 p-3 rounded-xl border border-dashed border-slate-200">
+              No tag selections found inside global configuration rule files. Add tags via your configuration console dashboard tab first.
+            </p>
+          )}
         </div>
 
         <div className="flex justify-end gap-3 pt-4 border-t border-slate-100 mt-6">

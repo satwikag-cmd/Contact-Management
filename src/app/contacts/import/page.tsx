@@ -1,38 +1,104 @@
 'use client';
 
-import React, { useState, useRef } from 'react';
+import  { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { useContacts } from '../../../context/ContactContext';
-import type { Contact } from '../../../types/contact';
-
-interface PreImportRecord {
-  firstName: string;
-  lastName: string;
-  email: string | null;
-  mobileNumber: string | null;
-  gender: string;
-  location: string;
-  isValid: boolean;
-  errorReason?: string;
-}
+import { useMutation } from '@tanstack/react-query';
+import { apiClient } from '../../../api/apiClient';
 
 export default function BulkCSVImportPage() {
   const router = useRouter();
-  const { contacts, addContact } = useContacts();
   const fileInputRef = useRef<HTMLInputElement>(null);
   
   const [isDragging, setIsDragging] = useState(false);
   const [errorLog, setErrorLog] = useState<string | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  
-  // Staging array to hold records for previewing before final confirmation
-  const [previewRecords, setPreviewRecords] = useState<PreImportRecord[]>([]);
-  const [isImporting, setIsImporting] = useState(false);
+  const [jobHistory, setJobHistory] = useState<Array<{ id: string; date: string; name: string }>>([]);
 
-  // --- 1. FILE SELECTION HANDLER ---
+  // Load history from browser storage upon hydration
+  useEffect(() => {
+    const cachedHistory = localStorage.getItem('csv_import_history');
+    if (cachedHistory) {
+      setJobHistory(JSON.parse(cachedHistory));
+    }
+  }, []);
+
+  // 📡 REACT QUERY MUTATION
+  const importMutation = useMutation({
+    mutationFn: async (file: File) => {
+      try {
+        const formData = new FormData();
+        formData.append('file', file); // Matches his exact required "file" key identifier
+
+        const response = await apiClient.request({
+          url: '/api/v1/contacts/import',
+          method: 'POST', // Matches his Go endpoint router mapping rule exactly
+          data: formData,
+          headers: {
+            // Setting this to undefined deletes the global JSON header rules
+            // and lets the browser calculate the multi-part layout boundary automatically!
+            'Content-Type': undefined 
+          }
+        });
+        
+        return response.data;
+      } catch (err: any) {
+        // 🚀 THE CRITICAL INTERCEPTOR FIX: Capture the raw response body before it escapes!
+        if (err.response && err.response.data) {
+          throw err.response.data; // Throws the raw body (e.g., { error: "Email format..." }) downstream
+        }
+        throw err;
+      }
+    },
+    onSuccess: (data) => {
+      // 📝 Save this job token details into local history track logs
+      const newHistoryItem = {
+        id: data.import_id || data.data?.import_id || 'JOB-' + Math.floor(Math.random() * 10000),
+        date: new Date().toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }),
+        name: selectedFile?.name || 'Bulk_Dataset.csv'
+      };
+      const updatedHistory = [newHistoryItem, ...jobHistory];
+      setJobHistory(updatedHistory);
+      localStorage.setItem('csv_import_history', JSON.stringify(updatedHistory));
+
+      // Redirect cleanly to the tracking instance screen
+      router.push(`/contacts/import/${newHistoryItem.id}`);
+    },
+    onError: (thrownError: any) => {
+      // 🛠️ The thrownError variable now contains the exact data body we intercepted above
+      console.log("--- CSV IMPORT FAILURE DATA ---", thrownError);
+
+      let serverFeedback = '';
+
+      if (thrownError) {
+        // If the Go backend returns { error: "Email format..." } directly
+        if (typeof thrownError.error === 'string') {
+          serverFeedback = thrownError.error;
+        } 
+        // If it's wrapped under a 'message' or 'errors' property
+        else if (typeof thrownError.message === 'string') {
+          serverFeedback = thrownError.message;
+        } 
+        else if (thrownError.errors && typeof thrownError.errors === 'object') {
+          const mappedMessages = Object.values(thrownError.errors);
+          if (mappedMessages.length > 0) serverFeedback = String(mappedMessages[0]);
+        }
+        // If the backend returns a single simple string value layout directly
+        else if (typeof thrownError === 'string') {
+          serverFeedback = thrownError;
+        }
+      }
+
+      // If we extracted a message from the Go server, display it! Otherwise use the fallback text.
+      setErrorLog(
+        serverFeedback 
+          ? `Ingestion Error: ${serverFeedback}` 
+          : `Ingestion Error: Please ensure the file is a valid CSV and matches the required layout matrix.`
+      );
+    }
+  });
+
   const handleFileChange = (file: File) => {
     setErrorLog(null);
-    setPreviewRecords([]);
     setSelectedFile(null);
 
     if (!file.name.toLowerCase().endsWith('.csv')) {
@@ -40,184 +106,23 @@ export default function BulkCSVImportPage() {
       return;
     }
     if (file.size === 0) {
-      setErrorLog('Validation Error: The selected file is empty.');
+      setErrorLog('Validation Error: The selected file contains zero data bytes.');
       return;
     }
-
     setSelectedFile(file);
-    parseAndValidateCSV(file);
   };
 
-  // --- 2. STRICT SCHEMA PARSER & VALIDATION MACHINE ---
-  // --- 2. SMART SCHEMA PARSER & VALIDATION MACHINE ---
-  const parseAndValidateCSV = (file: File) => {
-    const reader = new FileReader();
-    
-    reader.onload = (e) => {
-      const text = e.target?.result as string;
-      if (!text) return setErrorLog('System Error: Unable to read file data.');
-
-      const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
-      if (lines[0]?.startsWith('sep=')) lines.shift(); // Strip Excel separation markers
-
-      if (lines.length <= 1) {
-        setErrorLog('Validation Error: Spreadsheet contains header cells but zero data rows.');
-        return;
-      }
-
-      // Read headers and normalize them by stripping spaces, underscores, hyphens, and converting to lowercase
-      // Example: "First Name", "FirstName", "first_name" -> all become "firstname"
-      const headers = lines[0].split(',').map(h => 
-        h.trim().toLowerCase().replace(/[\s\-_]/g, '')
-      );
-
-      // --- FLEXIBLE SCHEMA GUARD MATCHING ---
-      const firstNameIdx = headers.findIndex(h => h === 'firstname' || h === 'name');
-      const lastNameIdx = headers.findIndex(h => h === 'lastname');
-      const emailIdx = headers.findIndex(h => h === 'emailaddress' || h === 'email' || h === 'mail');
-      const mobileIdx = headers.findIndex(h => h === 'mobilenumber' || h === 'phone' || h === 'phonenumber' || h === 'mobile');
-      const genderIdx = headers.findIndex(h => h === 'gender');
-      const locationIdx = headers.findIndex(h => h === 'location' || h === 'city');
-
-      // Check for structural absolute requirements (First Name and Gender)
-      if (firstNameIdx === -1) {
-        setErrorLog('Schema Rejection Error: Could not locate a column for "First Name" or "Name". Action Aborted.');
-        setSelectedFile(null);
-        return;
-      }
-
-      if (genderIdx === -1) {
-        setErrorLog('Schema Rejection Error: Missing mandatory column "Gender" inside CSV headers. Action Aborted.');
-        setSelectedFile(null);
-        return;
-      }
-
-    const parsedRows: PreImportRecord[] = lines.slice(1).map((row) => {
-      const columns = row.split(',').map(c => c.trim());
-      
-      const firstName = columns[firstNameIdx] || '';
-      const lastName = lastNameIdx !== -1 ? columns[lastNameIdx] : '';
-      const email = emailIdx !== -1 ? columns[emailIdx] : '';
-      const mobileNumber = mobileIdx !== -1 ? columns[mobileIdx] : '';
-      const gender = genderIdx !== -1 ? columns[genderIdx] : '';
-      const location = locationIdx !== -1 ? columns[locationIdx] : '';
-
-      let isValid = true;
-      let errorReason = '';
-
-      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      const cleanPhone = mobileNumber.replace(/[\s\-()+]/g, '');
-      
-      const isEmailValid = email ? emailRegex.test(email) : false;
-      const isPhoneValid = cleanPhone ? cleanPhone.length >= 10 : false;
-
-      const normalizedGender = gender.trim().toLowerCase();
-      let finalGender = '';
-      if (normalizedGender === 'male') finalGender = 'Male';
-      else if (normalizedGender === 'female') finalGender = 'Female';
-      else if (normalizedGender === 'other') finalGender = 'Other';
-
-      if (!firstName) {
-        isValid = false;
-        errorReason = 'Missing mandatory parameter: First Name';
-      } 
-      // CRITICAL SECURITY FIX: Fail rows that don't have AT LEAST one well-formatted contact path
-      else if (!email && !mobileNumber) {
-        isValid = false;
-        errorReason = 'Data Error: Profile must contain at least one valid Email or Mobile Vector.';
-      } 
-      else if (email && !isEmailValid) {
-        isValid = false;
-        errorReason = 'Format Error: Invalid structure path provided for Email address.';
-      } 
-      else if (mobileNumber && !isPhoneValid) {
-        isValid = false;
-        errorReason = 'Format Error: Mobile number string length is too short (Must be >= 10 digits).';
-      } 
-      else if (!gender) {
-        isValid = false;
-        errorReason = 'Data Error: Empty gender row parameters are not allowed.';
-      } 
-      else if (!finalGender) {
-        isValid = false;
-        errorReason = `Data Error: Invalid gender token value ("${gender}"). Must be Male, Female, or Other.`;
-      }
-
-      return {
-        firstName,
-        lastName,
-        email: isEmailValid ? email : null,
-        mobileNumber: isPhoneValid ? mobileNumber : null,
-        gender: finalGender || gender,
-        location,
-        isValid,
-        errorReason
-      };
-    });
-
-      setPreviewRecords(parsedRows);
-    };
-
-    reader.readAsText(file);
+  const handleTriggerServerUpload = () => {
+    if (!selectedFile) return;
+    importMutation.mutate(selectedFile);
   };
 
-  // --- 3. FINAL DIRECTORY COMMIT CONFIRMATION TRIGGER ---
- // --- 3. FINAL DIRECTORY COMMIT CONFIRMATION TRIGGER ---
-  const handleFinalizeImport = () => {
-    // FIX 1: Filter to loop strictly over VALID rows only
-    const validRecords = previewRecords.filter(r => r.isValid);
-    
-    if (validRecords.length === 0) {
-      alert("Aborted: Zero valid records are present inside this staging patch bundle.");
-      return;
+  const handleClearHistory = () => {
+    if (window.confirm("Purge past ingestion history tracker logs?")) {
+      localStorage.removeItem('csv_import_history');
+      setJobHistory([]);
     }
-
-    setIsImporting(true);
-
-    let newlyAddedCount = 0;
-    let duplicateSkippedCount = 0;
-
-    validRecords.forEach((record) => {
-      const isDuplicate = contacts.some(existingContact => {
-        const emailMatch = record.email && 
-          existingContact.email?.toLowerCase().trim() === record.email.toLowerCase().trim();
-          
-        const phoneMatch = record.mobileNumber && 
-          existingContact.mobileNumber?.replace(/[\s\-()]/g, '') === record.mobileNumber.replace(/[\s\-()]/g, '');
-
-        return emailMatch || phoneMatch;
-      });
-
-      if (!isDuplicate) {
-        addContact({
-          firstName: record.firstName,
-          lastName: record.lastName,
-          email: record.email,
-          mobileNumber: record.mobileNumber,
-          gender: record.gender as any,
-          location: record.location || undefined
-        });
-        newlyAddedCount++;
-      } else {
-        duplicateSkippedCount++;
-      }
-    });
-
-    setTimeout(() => {
-      setIsImporting(false);
-      
-      if (duplicateSkippedCount > 0) {
-        alert(`Ingestion Settled:\n✓ Sync complete: ${newlyAddedCount} new profile nodes registered.\n⚠️ Skipped: ${duplicateSkippedCount} duplicate matching records detected to prevent looping entries.`);
-      } else {
-        alert(`Success: Mapped ${newlyAddedCount} fresh directory nodes up-circuit cleanly!`);
-      }
-      
-      router.push('/contacts');
-    }, 600);
   };
-
-  const validCount = previewRecords.filter(r => r.isValid).length;
-  const brokenCount = previewRecords.filter(r => !r.isValid).length;
 
   return (
     <div className="space-y-6 max-w-5xl mx-auto py-2 animate-fade-in relative z-10">
@@ -226,7 +131,7 @@ export default function BulkCSVImportPage() {
       <div className="flex justify-between items-center border-b border-slate-200/60 pb-4">
         <div>
           <h2 className="text-xl font-black text-slate-900 tracking-tight">Bulk Ingestion System</h2>
-          <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mt-0.5">Staged Review Data Pipeline</p>
+          <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mt-0.5">Asynchronous Data Stream Engine</p>
         </div>
         <button onClick={() => router.push('/contacts')} className="text-xs font-black uppercase text-slate-400 hover:text-slate-600 transition-colors cursor-pointer">
           ◀ Directory Dashboard
@@ -239,105 +144,94 @@ export default function BulkCSVImportPage() {
         </div>
       )}
 
-      {/* STEP pass A: DROPZONE ENGINE VIEW CONTAINER */}
-      {previewRecords.length === 0 && (
-        <div 
-          onClick={() => fileInputRef.current?.click()}
-          onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
-          onDragLeave={() => setIsDragging(false)}
-          onDrop={(e) => { e.preventDefault(); setIsDragging(false); const file = e.dataTransfer.files?.[0]; if (file) handleFileChange(file); }}
-          className={`border-2 border-dashed rounded-2xl p-14 text-center cursor-pointer transition-all flex flex-col items-center justify-center select-none bg-white min-h-[260px] ${
-            isDragging ? 'border-emerald-500 bg-emerald-50/10' : 'border-slate-300 hover:border-slate-400'
-          }`}
-        >
-          <input type="file" ref={fileInputRef} onChange={(e) => e.target.files?.[0] && handleFileChange(e.target.files[0])} accept=".csv" className="hidden" />
-          <div className="text-4xl mb-3">📊</div>
-          <h4 className="text-sm font-black text-slate-800">Upload Corporate CSV Grid Asset Sheet</h4>
-          <p className="text-[11px] text-slate-400 font-bold uppercase tracking-wide mt-1.5">Strict schema checks enabled: Missing column entries will instantly abort</p>
-        </div>
-      )}
-
-      {/* STEP pass B: THE PREVIEW REVIEW MATRIX WINDOW GRID */}
-      {previewRecords.length > 0 && (
-        <div className="space-y-6 animate-fade-in">
-          
-          {/* Staging Metrics Information Row Bar */}
-          <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs flex flex-wrap justify-between items-center gap-4">
-            <div className="flex gap-6 text-xs">
-              <div>
-                <span className="text-slate-400 font-bold uppercase text-[9px] block">Total Rows Detected</span>
-                <span className="text-base font-black text-slate-900 font-mono">{previewRecords.length}</span>
-              </div>
-              <div>
-                <span className="text-emerald-500 font-bold uppercase text-[9px] block">Valid & Ready</span>
-                <span className="text-base font-black text-emerald-600 font-mono">{validCount}</span>
-              </div>
-              <div>
-                <span className="text-red-500 font-bold uppercase text-[9px] block">Flagged Violations</span>
-                <span className="text-base font-black text-red-500 font-mono">{brokenCount}</span>
-              </div>
+      {/* DROPZONE DRAG AND DROP CONTAINER */}
+      <div 
+        onClick={() => !selectedFile && fileInputRef.current?.click()}
+        onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+        onDragLeave={() => setIsDragging(false)}
+        onDrop={(e) => { e.preventDefault(); setIsDragging(false); const file = e.dataTransfer.files?.[0]; if (file) handleFileChange(file); }}
+        className={`border-2 border-dashed rounded-2xl p-14 text-center transition-all flex flex-col items-center justify-center select-none bg-white min-h-[220px] ${
+          isDragging ? 'border-emerald-500 bg-emerald-50/10' : 'border-slate-300 hover:border-slate-400'
+        } ${selectedFile ? 'cursor-default' : 'cursor-pointer'}`}
+      >
+        <input type="file" ref={fileInputRef} onChange={(e) => e.target.files?.[0] && handleFileChange(e.target.files[0])} accept=".csv" className="hidden" />
+        
+        <div className="text-4xl mb-3">{selectedFile ? '📄' : '📊'}</div>
+        
+        {selectedFile ? (
+          <div className="space-y-4 w-full max-w-sm mx-auto">
+            <div>
+              <h4 className="text-sm font-black text-slate-800 break-all">{selectedFile.name}</h4>
+              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wide mt-1">
+                Size Capacity: {(selectedFile.size / 1024).toFixed(2)} KB
+              </p>
             </div>
-
-            {/* ACTION TRIGGERS: CONFIRMATION LAYER INTERACTION HANDLES */}
-            <div className="flex gap-3">
+            
+            <div className="flex gap-2 justify-center pt-2">
               <button 
-                onClick={() => setPreviewRecords([])} 
+                onClick={(e) => { e.stopPropagation(); setSelectedFile(null); }}
                 className="px-4 py-2 border border-slate-200 text-slate-500 font-bold text-xs rounded-xl hover:bg-slate-50 transition-all cursor-pointer"
               >
-                Reset Upload
+                Clear
               </button>
               <button 
-                onClick={handleFinalizeImport}
-                disabled={validCount === 0 || isImporting}
-                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 text-white font-black text-xs rounded-xl shadow-xs transition-all cursor-pointer flex items-center gap-1.5"
+                onClick={(e) => { e.stopPropagation(); handleTriggerServerUpload(); }}
+                disabled={importMutation.isPending}
+                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 text-white font-black text-xs rounded-xl shadow-xs transition-all cursor-pointer"
               >
-                {isImporting ? 'Syncing...' : `✓ Import ${validCount} Items to Main Directory`}
+                {importMutation.isPending ? 'Uploading Stream...' : '⚡ Fire Background Import Job'}
               </button>
             </div>
           </div>
+        ) : (
+          <>
+            <h4 className="text-sm font-black text-slate-800">Upload Corporate CSV Grid Asset Sheet</h4>
+            <p className="text-[11px] text-slate-400 font-bold uppercase tracking-wide mt-1.5">
+              Files are passed straight to background thread workers for ingestion parsing
+            </p>
+          </>
+        )}
+      </div>
 
-          {/* Render Data Preview Table Workspace */}
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden">
-            <div className="overflow-x-auto max-h-[400px]">
-              <table className="w-full text-left border-collapse relative">
-                <thead className="sticky top-0 bg-slate-50 border-b border-slate-200 z-10 text-[10px] font-black text-slate-400 uppercase tracking-wider">
-                  <tr>
-                    <th className="px-6 py-3">Row Evaluation</th>
-                    <th className="px-6 py-3">First Name</th>
-                    <th className="px-6 py-3">Last Name</th>
-                    <th className="px-6 py-3">Email Address</th>
-                    <th className="px-6 py-3">Mobile Vector</th>
-                    <th className="px-6 py-3">Gender</th>
-                    <th className="px-6 py-3">Location City</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 text-xs font-semibold text-slate-600">
-                  {previewRecords.map((rec, i) => (
-                    <tr key={i} className={`transition-colors ${rec.isValid ? 'hover:bg-slate-50/40' : 'bg-red-50/30'}`}>
-                      <td className="px-6 py-3.5">
-                        {rec.isValid ? (
-                          <span className="px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 text-[9px] font-black uppercase tracking-wide border border-emerald-100">Clean</span>
-                        ) : (
-                          <span className="px-2 py-0.5 rounded bg-red-100 text-red-700 text-[9px] font-black uppercase tracking-wide border border-red-200" title={rec.errorReason}>
-                            Error: {rec.errorReason}
-                          </span>
-                        )}
-                      </td>
-                      <td className={`px-6 py-3.5 ${!rec.firstName ? 'text-slate-300 italic text-[11px]' : 'text-slate-900 font-bold'}`}>{rec.firstName || 'empty'}</td>
-                      <td className="px-6 py-3.5 text-slate-500">{rec.lastName || '—'}</td>
-                      <td className="px-6 py-3.5 text-slate-400 font-medium">{rec.email || '—'}</td>
-                      <td className="px-6 py-3.5 text-slate-500">{rec.mobileNumber || '—'}</td>
-                      <td className={`px-6 py-3.5 ${!rec.gender ? 'text-red-500/80 font-black italic' : 'text-slate-700 font-bold'}`}>{rec.gender || 'missing'}</td>
-                      <td className="px-6 py-3.5 text-slate-400">{rec.location || '—'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
+      {/* 📜 HISTORICAL BACKGROUND TRACKING HISTORY TRACE */}
+      <div className="bg-white rounded-2xl border border-slate-200 p-5 space-y-4 shadow-xs">
+        <div className="flex justify-between items-center border-b border-slate-100 pb-2">
+          <h3 className="text-xs font-black text-slate-400 uppercase tracking-wider">Past Ingestion History Logs</h3>
+          {jobHistory.length > 0 && (
+            <button 
+              onClick={handleClearHistory}
+              className="text-[10px] text-red-500 hover:text-red-600 font-black uppercase tracking-wider cursor-pointer"
+            >
+              Clear Logs
+            </button>
+          )}
         </div>
-      )}
+
+        {jobHistory.length > 0 ? (
+          <div className="divide-y divide-slate-100 text-xs max-h-48 overflow-y-auto">
+            {jobHistory.map((job) => (
+              <div 
+                key={job.id} 
+                onClick={() => router.push(`/contacts/import/${job.id}`)}
+                className="py-3 flex items-center justify-between hover:bg-slate-50/50 px-2 rounded-xl transition-all cursor-pointer group"
+              >
+                <div className="space-y-0.5">
+                  <p className="font-bold text-slate-800 group-hover:text-emerald-600 transition-colors break-all pr-4">{job.name}</p>
+                  <p className="text-[10px] text-slate-400 font-mono font-bold">Token: #{job.id}</p>
+                </div>
+                <div className="text-right shrink-0">
+                  <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wide">{job.date}</p>
+                  <p className="text-[9px] text-blue-500 font-extrabold uppercase mt-0.5 tracking-wider">Inspect View ↗</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-center py-6 text-slate-400 font-bold uppercase tracking-wider text-[11px] select-none bg-slate-50/30 border border-dashed border-slate-100 rounded-xl">
+            No previous asynchronous background batches tracked inside this runtime shell.
+          </p>
+        )}
+      </div>
 
     </div>
   );

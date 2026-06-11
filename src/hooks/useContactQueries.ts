@@ -1,25 +1,43 @@
-// src/hooks/useContactQueries.ts
 'use client';
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '../api/apiClient';
-import type { Contact, Note, Tag } from '../types/contact';
+import type { Contact } from '../types/contact';
 
 export const useContactQueries = () => {
   const queryClient = useQueryClient();
 
-  // ==========================================
-  // 👥 CONTACTS DATA APIS TRACKS
-  // ==========================================
-  
-  const useFetchContacts = (search: string, status: string) => {
+  // 📡 Clean fetch signature perfectly aligned with your backend payload requirements
+  const useFetchContacts = (
+    page: number, 
+    limit: number, 
+    search: string, 
+    status: string,
+    city?: string,     
+    state?: string,    
+    country?: string
+  ) => {
     return useQuery({
-      queryKey: ['contacts', { search, status }],
+      queryKey: ['contacts', { page, limit, search, status, city, state, country }],
       queryFn: async () => {
-        const response = await apiClient.get<{ data: Contact[] }>('/contacts', {
-          params: { search: search || undefined, status: status !== 'All' ? status : undefined }
+        const response = await apiClient.get<{ 
+          data: Contact[]; 
+          total: number; 
+          page: number; 
+          limit: number; 
+          total_pages: number; 
+        }>('/api/v1/contacts', {
+          params: { 
+            page,
+            limit,
+            search: search || undefined, 
+            status: status !== 'All' ? status : undefined,
+            city: city || undefined,
+            state: state || undefined,
+            country: country || undefined
+          }
         });
-        return response.data.data;
+        return response.data;
       }
     });
   };
@@ -27,8 +45,16 @@ export const useContactQueries = () => {
   const useCreateContact = () => {
     return useMutation({
       mutationFn: async (newContact: Omit<Contact, 'id' | 'createdAt' | 'lastActivityAt' | 'isDeleted' | 'tags'>) => {
-        const response = await apiClient.post('/contacts', newContact);
-        return response.data;
+        try {
+          const response = await apiClient.post('/api/v1/contacts', newContact);
+          return response.data;
+        } catch (err: any) {
+          // 🚀 THE FIX: Catch the error raw from Axios, extract the body, and throw it downstream
+          if (err.response && err.response.data) {
+            throw err.response.data;
+          }
+          throw err;
+        }
       },
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: ['contacts'] });
@@ -39,12 +65,13 @@ export const useContactQueries = () => {
   const useUpdateContact = () => {
     return useMutation({
       mutationFn: async ({ id, fields }: { id: string; fields: Partial<Contact> }) => {
-        const response = await apiClient.patch(`/contacts/${id}`, fields);
+        const response = await apiClient.patch(`/api/v1/contacts/${id}`, fields);
         return response.data;
       },
       onSuccess: (_, variables) => {
         queryClient.invalidateQueries({ queryKey: ['contacts'] });
-        queryClient.invalidateQueries({ queryKey: ['contact', variables.id] });
+        queryClient.invalidateQueries({ queryKey: ['contact-profile', variables.id] });
+        queryClient.invalidateQueries({ queryKey: ['contact-profile-edit', variables.id] });
       }
     });
   };
@@ -52,7 +79,7 @@ export const useContactQueries = () => {
   const useSoftDeleteContact = () => {
     return useMutation({
       mutationFn: async (id: string) => {
-        const response = await apiClient.delete(`/contacts/${id}`);
+        const response = await apiClient.delete(`/api/v1/contacts/${id}`);
         return response.data;
       },
       onSuccess: () => {
@@ -64,7 +91,7 @@ export const useContactQueries = () => {
   const useRestoreContact = () => {
     return useMutation({
       mutationFn: async (id: string) => {
-        const response = await apiClient.post(`/contacts/${id}/restore`);
+        const response = await apiClient.post(`/api/v1/contacts/${id}/restore`);
         return response.data;
       },
       onSuccess: () => {
@@ -73,31 +100,28 @@ export const useContactQueries = () => {
     });
   };
 
-  // ==========================================
-  // 📝 INTERACTION NOTES MANAGEMENT APIS
-  // ==========================================
-
-  // Fetch all historical account notes ledger assigned to a specific contact ID
   const useFetchNotes = (contactId: string) => {
     return useQuery({
       queryKey: ['notes', contactId],
       queryFn: async () => {
-        const response = await apiClient.get<{ data: Note[] }>(`/contacts/${contactId}/notes`);
-        return response.data.data;
+        const response = await apiClient.get<{ notes: any[] }>(`/api/v1/contacts/${contactId}/notes`);
+        return response.data.notes || []; 
       },
-      enabled: !!contactId // Only fire request if a valid ID string is mounted
+      enabled: !!contactId 
     });
   };
 
   const useAddNote = () => {
     return useMutation({
       mutationFn: async ({ contactId, content }: { contactId: string; content: string }) => {
-        const response = await apiClient.post(`/contacts/${contactId}/notes`, { content });
+        const response = await apiClient.post(`/api/v1/contacts/${contactId}/notes`, { 
+          note: content 
+        });
         return response.data;
       },
       onSuccess: (_, variables) => {
-        // Refresh the specific notes cache list partition instantly
         queryClient.invalidateQueries({ queryKey: ['notes', variables.contactId] });
+        queryClient.invalidateQueries({ queryKey: ['contact-profile', variables.contactId] });
       }
     });
   };
@@ -105,11 +129,14 @@ export const useContactQueries = () => {
   const useEditNote = () => {
     return useMutation({
       mutationFn: async ({ contactId, noteId, content }: { contactId: string; noteId: string; content: string }) => {
-        const response = await apiClient.patch(`/contacts/${contactId}/notes/${noteId}`, { content });
+        const response = await apiClient.put(`/api/v1/contacts/${contactId}/notes/${noteId}`, { 
+          note: content 
+        });
         return response.data;
       },
       onSuccess: (_, variables) => {
         queryClient.invalidateQueries({ queryKey: ['notes', variables.contactId] });
+        queryClient.invalidateQueries({ queryKey: ['contact-profile', variables.contactId] });
       }
     });
   };
@@ -117,26 +144,54 @@ export const useContactQueries = () => {
   const useDeleteNote = () => {
     return useMutation({
       mutationFn: async ({ contactId, noteId }: { contactId: string; noteId: string }) => {
-        const response = await apiClient.delete(`/contacts/${contactId}/notes/${noteId}`);
+        const response = await apiClient.delete(`/api/v1/contacts/${contactId}/notes/${noteId}`);
         return response.data;
       },
       onSuccess: (_, variables) => {
         queryClient.invalidateQueries({ queryKey: ['notes', variables.contactId] });
+        queryClient.invalidateQueries({ queryKey: ['contact-profile', variables.contactId] });
       }
     });
   };
 
-  // ==========================================
-  // 🏷️ TAXONOMY TAG MANAGEMENT APIS
-  // ==========================================
-
-  // Fetch the global corporate tag rules taxonomy list choices
   const useFetchGlobalTags = () => {
     return useQuery({
       queryKey: ['global-tags'],
       queryFn: async () => {
-        const response = await apiClient.get<{ data: Tag[] }>('/tags');
-        return response.data.data;
+        const localTags = localStorage.getItem('crm_master_rules_tags');
+        if (localTags) return JSON.parse(localTags);
+        
+        const defaultStarter = ['Lead', 'VIP', 'Customer', 'Prospect'];
+        localStorage.setItem('crm_master_rules_tags', JSON.stringify(defaultStarter));
+        return defaultStarter;
+      }
+    });
+  };
+
+  const useCreateGlobalTag = () => {
+    return useMutation({
+      mutationFn: async (newTagName: string) => {
+        const cachedTags: string[] = queryClient.getQueryData(['global-tags']) || [];
+        const updatedTags = [...cachedTags, newTagName];
+        localStorage.setItem('crm_master_rules_tags', JSON.stringify(updatedTags));
+        return updatedTags;
+      },
+      onSuccess: (data) => {
+        queryClient.setQueryData(['global-tags'], data);
+      }
+    });
+  };
+
+  const useDeleteGlobalTag = () => {
+    return useMutation({
+      mutationFn: async (tagNameToRemove: string) => {
+        const cachedTags: string[] = queryClient.getQueryData(['global-tags']) || [];
+        const updatedTags = cachedTags.filter(t => t !== tagNameToRemove);
+        localStorage.setItem('crm_master_rules_tags', JSON.stringify(updatedTags));
+        return updatedTags;
+      },
+      onSuccess: (data) => {
+        queryClient.setQueryData(['global-tags'], data);
       }
     });
   };
@@ -144,12 +199,12 @@ export const useContactQueries = () => {
   const useAssignTag = () => {
     return useMutation({
       mutationFn: async ({ contactId, tagId }: { contactId: string; tagId: string }) => {
-        const response = await apiClient.post(`/contacts/${contactId}/tags/${tagId}`);
+        const response = await apiClient.post(`/api/v1/contacts/${contactId}/tags/${tagId}`);
         return response.data;
       },
       onSuccess: (_, variables) => {
         queryClient.invalidateQueries({ queryKey: ['contacts'] });
-        queryClient.invalidateQueries({ queryKey: ['contact', variables.contactId] });
+        queryClient.invalidateQueries({ queryKey: ['contact-profile', variables.contactId] });
       }
     });
   };
@@ -157,12 +212,12 @@ export const useContactQueries = () => {
   const useRemoveTag = () => {
     return useMutation({
       mutationFn: async ({ contactId, tagId }: { contactId: string; tagId: string }) => {
-        const response = await apiClient.delete(`/contacts/${contactId}/tags/${tagId}`);
+        const response = await apiClient.delete(`/api/v1/contacts/${contactId}/tags/${tagId}`);
         return response.data;
       },
       onSuccess: (_, variables) => {
         queryClient.invalidateQueries({ queryKey: ['contacts'] });
-        queryClient.invalidateQueries({ queryKey: ['contact', variables.contactId] });
+        queryClient.invalidateQueries({ queryKey: ['contact-profile', variables.contactId] });
       }
     });
   };
@@ -173,13 +228,13 @@ export const useContactQueries = () => {
     useUpdateContact,
     useSoftDeleteContact,
     useRestoreContact,
-    
     useFetchNotes,
     useAddNote,
     useEditNote,
     useDeleteNote,
-    
     useFetchGlobalTags,
+    useCreateGlobalTag,
+    useDeleteGlobalTag,
     useAssignTag,
     useRemoveTag
   };

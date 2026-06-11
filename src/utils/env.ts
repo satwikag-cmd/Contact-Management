@@ -1,5 +1,8 @@
 // src/utils/env.ts
 export const env = {
-  // Using globalThis tells TypeScript to look at the global runtime environment safely
-  NEXT_PUBLIC_API_URL: (typeof window !== 'undefined' ? (globalThis as any).process?.env?.NEXT_PUBLIC_API_URL : undefined) || 'https://api.kasplo.crm/v1',
+  // 💻 Hardcoding his exact laptop IP address right here:
+  NEXT_PUBLIC_API_URL: 'http://192.168.88.4:8081',
+
+  // 🔑 Hardcoding his exact case-sensitive security key right here:
+  NEXT_PUBLIC_API_KEY: 'a6b33986d7afd06bcdd55fbd22590c7121ab3b3e3e4c8218226dba77d7c5ae0d',
 } as const;
