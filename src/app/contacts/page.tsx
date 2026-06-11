@@ -41,12 +41,12 @@ export default function ContactListPage() {
   // Query global tags list out of local client cache
   const { data: globalTags = [] } = useFetchGlobalTags();
 
-  // 📡 FETCH LIVE ROWS FROM BACKEND WITH SAFE WINDOW OVERHEAD BUFFER
+  // 📡 FETCH LIVE ROWS FROM BACKEND - FULLY DYNAMIC NOW!
   const { data: serverPayload, isLoading, isError } = useFetchContacts(
-    1, 
-    200, 
+    currentPage,      // 🔄 Sends real page index coordinates dynamically
+    pageSize,         // 🔄 Sends your 5, 10, 15 page sizes over the wire
     searchQuery, 
-    'All',
+    genderFilter,     // 🔄 Sends chosen gender parameter string to the Go terminal
     cityQuery || undefined,     
     stateQuery || undefined,    
     countryQuery || undefined   
@@ -133,12 +133,15 @@ export default function ContactListPage() {
     localStorage.removeItem('contact_hub_saved_filters');
   };
 
-  // --- 🧬 STEP 1: FILTER BY GENDER AND TAGS FIRST ---
-  const filteredContacts = contactsList
+  // --- 🧬 ALIGNED DATA PREPARATION LAYER ---
+  // The backend already handles your filters, pagination cuts, and location targets!
+  // We apply localized sorting and client-side secondary metadata tags tracking on the data array.
+  // --- 🧬 ALIGNED DATA PREPARATION LAYER ---
+  // The backend already handles your search, gender, and location parameters natively!
+  // We only track profile tag matches and custom date boundaries in frontend memory.
+  const filteredContacts = [...contactsList]
     .filter((contact: any) => {
-      const contactGender = contact.gender || contact["Basic Information"]?.["Gender"] || 'Male';
-      if (genderFilter !== 'All' && contactGender.toLowerCase() !== genderFilter.toLowerCase()) return false;
-
+      // 🏷️ Profile Tag matching (Frontend memory helper)
       if (selectedFilterTags.length > 0) {
         const contactTags: string[] = contact.tags || [];
         const hasMatchingTag = selectedFilterTags.every(t => 
@@ -147,6 +150,7 @@ export default function ContactListPage() {
         if (!hasMatchingTag) return false;
       }
       
+      // 📅 Date calendar range parameters
       if (createdDateFilter) {
         const contactCreated = new Date(contact.created_at || contact.createdAt).toISOString().split('T')[0];
         if (contactCreated !== createdDateFilter) return false;
@@ -169,14 +173,14 @@ export default function ContactListPage() {
       return 0;
     });
 
-  // --- 🔢 STEP 2: SLICE THE DATA INTO PAGES AFTER GENDER IS APPLIED ---
-  const serverTotalRecords = filteredContacts.length;
-  const totalPagesCount = Math.ceil(serverTotalRecords / pageSize) || 1;
+  // --- 🔢 SERVER METADATA RECONCILIATION ---
+  // We map the total boundaries directly to the counter object returned by his Go API!
+  const serverTotalRecords = serverPayload?.total || filteredContacts.length;
+  const totalPagesCount = serverPayload?.total_pages || Math.ceil(serverTotalRecords / pageSize) || 1;
   
-  const paginatedContacts = filteredContacts.slice(
-    (currentPage - 1) * pageSize, 
-    currentPage * pageSize
-  );
+  // No more manual client-side .slice() array truncating.
+  // The Go server sends the exact sliced chunk, so we use it directly!
+  const paginatedContacts = filteredContacts;
 
   const handleSoftDeleteClick = (id: string) => {
     setTargetDeleteId(id);

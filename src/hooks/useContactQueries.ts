@@ -8,17 +8,18 @@ export const useContactQueries = () => {
   const queryClient = useQueryClient();
 
   // 📡 Clean fetch signature perfectly aligned with your backend payload requirements
+  // 📡 In src/hooks/useContactQueries.ts
   const useFetchContacts = (
     page: number, 
     limit: number, 
     search: string, 
-    status: string,
+    gender: string, // 🔄 Changed naming convention from 'status' to 'gender'
     city?: string,     
     state?: string,    
     country?: string
   ) => {
     return useQuery({
-      queryKey: ['contacts', { page, limit, search, status, city, state, country }],
+      queryKey: ['contacts', { page, limit, search, gender, city, state, country }],
       queryFn: async () => {
         const response = await apiClient.get<{ 
           data: Contact[]; 
@@ -31,7 +32,8 @@ export const useContactQueries = () => {
             page,
             limit,
             search: search || undefined, 
-            status: status !== 'All' ? status : undefined,
+            // 🚀 THE CRITICAL ALIGNMENT FIX: Send 'gender' over the wire instead of 'status'
+            gender: gender !== 'All' ? gender.toLowerCase() : undefined,
             city: city || undefined,
             state: state || undefined,
             country: country || undefined
