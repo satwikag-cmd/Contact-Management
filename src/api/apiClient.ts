@@ -8,7 +8,7 @@ export const apiClient = axios.create({
   headers: {
     'Content-Type': 'application/json',
     // Passes his security gate automatically on every request
-    'X-API-Key': env.NEXT_PUBLIC_API_KEY, 
+    //'X-API-Key': env.NEXT_PUBLIC_API_KEY, 
   },
 });
 
