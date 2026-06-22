@@ -7,19 +7,20 @@ import type { Contact } from '../types/contact';
 export const useContactQueries = () => {
   const queryClient = useQueryClient();
 
-  // 📡 Clean fetch signature perfectly aligned with your backend payload requirements
-  // 📡 In src/hooks/useContactQueries.ts
+  // 📡 Hook updated to accept server-driven sorting constraints
   const useFetchContacts = (
     page: number, 
     limit: number, 
     search: string, 
-    gender: string, // 🔄 Changed naming convention from 'status' to 'gender'
+    gender: string,
     city?: string,     
     state?: string,    
-    country?: string
+    country?: string,
+    sortBy?: string,      // 🚀 New server parameter
+    sortOrder?: string    // 🚀 New server parameter
   ) => {
     return useQuery({
-      queryKey: ['contacts', { page, limit, search, gender, city, state, country }],
+      queryKey: ['contacts', { page, limit, search, gender, city, state, country, sortBy, sortOrder }],
       queryFn: async () => {
         const response = await apiClient.get<{ 
           data: Contact[]; 
@@ -32,11 +33,13 @@ export const useContactQueries = () => {
             page,
             limit,
             search: search || undefined, 
-            // 🚀 THE CRITICAL ALIGNMENT FIX: Send 'gender' over the wire instead of 'status'
             gender: gender !== 'All' ? gender.toLowerCase() : undefined,
             city: city || undefined,
             state: state || undefined,
-            country: country || undefined
+            country: country || undefined,
+            // 🚀 Forward sorting configuration values downstream to Go router handles
+            sort_by: sortBy || undefined,
+            sort_order: sortOrder || undefined
           }
         });
         return response.data;
@@ -51,7 +54,6 @@ export const useContactQueries = () => {
           const response = await apiClient.post('/api/v1/contacts', newContact);
           return response.data;
         } catch (err: any) {
-          // 🚀 THE FIX: Catch the error raw from Axios, extract the body, and throw it downstream
           if (err.response && err.response.data) {
             throw err.response.data;
           }

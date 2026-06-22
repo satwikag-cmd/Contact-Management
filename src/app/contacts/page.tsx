@@ -9,11 +9,14 @@ export default function ContactListPage() {
   const router = useRouter();
   const { useFetchContacts, useSoftDeleteContact, useFetchGlobalTags } = useContactQueries();
 
-  // 🎛️ SYSTEM CORE QUERY PARAMETERS (Initialized directly from localStorage if present)
+  // 🎛️ SYSTEM CORE QUERY PARAMETERS
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(5);
   const [genderFilter, setGenderFilter] = useState<string>('All');
-  const [sortOrder, setSortOrder] = useState<'newest' | 'oldest' | 'asc' | 'desc'>('newest');
+  
+  // 🚀 RESTRUCTURED SERVER-SIDE SORT STATES
+  const [sortBy, setSortBy] = useState<string>('created_at');
+  const [sortOrder, setSortOrder] = useState<string>('desc');
 
   // 🚀 APPLIED NETWORK SEARCH STRINGS
   const [searchQuery, setSearchQuery] = useState('');
@@ -41,15 +44,17 @@ export default function ContactListPage() {
   // Query global tags list out of local client cache
   const { data: globalTags = [] } = useFetchGlobalTags();
 
-  // 📡 FETCH LIVE ROWS FROM BACKEND - FULLY DYNAMIC NOW!
+  // 📡 FETCH LIVE ROWS FROM BACKEND - NOW SECURE WITH NATIVE DISK ORDINAL PIPELINE
   const { data: serverPayload, isLoading, isError } = useFetchContacts(
-    currentPage,      // 🔄 Sends real page index coordinates dynamically
-    pageSize,         // 🔄 Sends your 5, 10, 15 page sizes over the wire
+    currentPage,      
+    pageSize,         
     searchQuery, 
-    genderFilter,     // 🔄 Sends chosen gender parameter string to the Go terminal
+    genderFilter,     
     cityQuery || undefined,     
     stateQuery || undefined,    
-    countryQuery || undefined   
+    countryQuery || undefined,
+    sortBy,             
+    sortOrder           
   );
   const deleteMutation = useSoftDeleteContact();
   const contactsList = serverPayload?.data || [];
@@ -61,24 +66,24 @@ export default function ContactListPage() {
       if (savedFilters) {
         const parsed = JSON.parse(savedFilters);
         
-        // 🔹 1. Apply instantly to Core Dropdown Parameters
+        // Apply instantly to Core Dropdown Parameters (Including both new sort fields!)
         if (parsed.pageSize) setPageSize(parsed.pageSize);
         if (parsed.genderFilter) setGenderFilter(parsed.genderFilter);
+        if (parsed.sortBy) setSortBy(parsed.sortBy);
         if (parsed.sortOrder) setSortOrder(parsed.sortOrder);
         
-        // 🔹 2. Apply instantly to Active Applied Network Queries (Crucial Fix!)
+        // Apply instantly to Active Applied Network Queries
         if (parsed.searchQuery) setSearchQuery(parsed.searchQuery);
         if (parsed.cityQuery) setCityQuery(parsed.cityQuery);
         if (parsed.stateQuery) setStateQuery(parsed.stateQuery);
         if (parsed.countryQuery) setCountryQuery(parsed.countryQuery);
         
-        // 🔹 3. Apply instantly to Local Input Visual Buffers so text stays visible
+        // Apply instantly to Local Input Visual Buffers
         if (parsed.searchQuery) setSearchTerm(parsed.searchQuery);
         if (parsed.cityQuery) setCityInput(parsed.cityQuery);
         if (parsed.stateQuery) setStateInput(parsed.stateQuery);
         if (parsed.countryQuery) setCountryInput(parsed.countryQuery);
         
-        // 📂 4. Automatically keep the Advanced Drawer open if advanced parameters exist!
         if (parsed.cityQuery || parsed.stateQuery || parsed.countryQuery) {
           setIsDrawerExpanded(true);
         }
@@ -93,14 +98,15 @@ export default function ContactListPage() {
     const filterObject = {
       pageSize,
       genderFilter,
-      sortOrder,
+      sortBy,         
+      sortOrder,      
       searchQuery,
       cityQuery,
       stateQuery,
       countryQuery
     };
     localStorage.setItem('contact_hub_saved_filters', JSON.stringify(filterObject));
-  }, [pageSize, genderFilter, sortOrder, searchQuery, cityQuery, stateQuery, countryQuery]);
+  }, [pageSize, genderFilter, sortBy, sortOrder, searchQuery, cityQuery, stateQuery, countryQuery]);
 
   // --- ⌨️ TRIGGER SEARCH HANDLERS ---
   const handleApplyFilters = () => {
@@ -126,22 +132,14 @@ export default function ContactListPage() {
     setSearchTerm(''); setCityInput(''); setStateInput(''); setCountryInput('');
     setSearchQuery(''); setCityQuery(''); setStateQuery(''); setCountryQuery('');
     setSelectedFilterTags([]); setCreatedDateFilter(''); setActivityDateFilter('');
-    setGenderFilter('All'); setSortOrder('newest');
+    setGenderFilter('All'); setSortBy('created_at'); setSortOrder('desc');
     setCurrentPage(1);
-    
-    // Completely purge the persistent object out of disk memory
     localStorage.removeItem('contact_hub_saved_filters');
   };
 
-  // --- 🧬 ALIGNED DATA PREPARATION LAYER ---
-  // The backend already handles your filters, pagination cuts, and location targets!
-  // We apply localized sorting and client-side secondary metadata tags tracking on the data array.
-  // --- 🧬 ALIGNED DATA PREPARATION LAYER ---
-  // The backend already handles your search, gender, and location parameters natively!
-  // We only track profile tag matches and custom date boundaries in frontend memory.
+  // --- 🧬 CLEAN ALIGNED DATA PREPARATION LAYER ---
   const filteredContacts = [...contactsList]
     .filter((contact: any) => {
-      // 🏷️ Profile Tag matching (Frontend memory helper)
       if (selectedFilterTags.length > 0) {
         const contactTags: string[] = contact.tags || [];
         const hasMatchingTag = selectedFilterTags.every(t => 
@@ -150,7 +148,6 @@ export default function ContactListPage() {
         if (!hasMatchingTag) return false;
       }
       
-      // 📅 Date calendar range parameters
       if (createdDateFilter) {
         const contactCreated = new Date(contact.created_at || contact.createdAt).toISOString().split('T')[0];
         if (contactCreated !== createdDateFilter) return false;
@@ -162,24 +159,29 @@ export default function ContactListPage() {
 
       return true;
     })
+    // 🛠️ SAFETY CRITICAL INTERCEPTOR LAYER:
+    // If his backend sorting is not working, this blocks runtime errors and sorts live in RAM!
     .sort((a: any, b: any) => {
-      if (sortOrder === 'newest') return new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime();
-      if (sortOrder === 'oldest') return new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime();
-      
-      const nameA = `${a.first_name || ''} ${a.last_name || ''}`.toLowerCase();
-      const nameB = `${b.first_name || ''} ${b.last_name || ''}`.toLowerCase();
-      if (sortOrder === 'asc') return nameA.localeCompare(nameB);
-      if (sortOrder === 'desc') return nameB.localeCompare(nameA);
+      let fieldA = a[sortBy] || '';
+      let fieldB = b[sortBy] || '';
+
+      if (sortBy === 'first_name') {
+        fieldA = `${a.first_name || ''} ${a.last_name || ''}`.toLowerCase();
+        fieldB = `${b.first_name || ''} ${b.last_name || ''}`.toLowerCase();
+      } else if (typeof fieldA === 'string') {
+        fieldA = fieldA.toLowerCase();
+        fieldB = fieldB.toLowerCase();
+      }
+
+      if (fieldA < fieldB) return sortOrder === 'asc' ? -1 : 1;
+      if (fieldA > fieldB) return sortOrder === 'asc' ? 1 : -1;
       return 0;
     });
 
   // --- 🔢 SERVER METADATA RECONCILIATION ---
-  // We map the total boundaries directly to the counter object returned by his Go API!
   const serverTotalRecords = serverPayload?.total || filteredContacts.length;
   const totalPagesCount = serverPayload?.total_pages || Math.ceil(serverTotalRecords / pageSize) || 1;
   
-  // No more manual client-side .slice() array truncating.
-  // The Go server sends the exact sliced chunk, so we use it directly!
   const paginatedContacts = filteredContacts;
 
   const handleSoftDeleteClick = (id: string) => {
@@ -270,15 +272,26 @@ export default function ContactListPage() {
               <option value="Other">Other</option>
             </select>
 
+            {/* DROPDOWN COLUMNS */}
             <select
-              value={sortOrder}
-              onChange={(e) => setSortOrder(e.target.value as any)}
+              value={sortBy}
+              onChange={(e) => { setSortBy(e.target.value); setCurrentPage(1); }}
               className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-black text-slate-800 focus:outline-none cursor-pointer"
             >
-              <option value="newest">Sort: Newest Added</option>
-              <option value="oldest">Sort: Oldest Added</option>
-              <option value="asc">Sort: Name (A → Z)</option>
-              <option value="desc">Sort: Name (Z → A)</option>
+              <option value="created_at">Sort By: Date Added</option>
+              <option value="email">Sort By: Email Address</option>
+              <option value="first_name">Sort By: Contact Name</option>
+              <option value="city">Sort By: City Location</option>
+            </select>
+
+            {/* DIRECTION SELECTOR */}
+            <select
+              value={sortOrder}
+              onChange={(e) => { setSortOrder(e.target.value); setCurrentPage(1); }}
+              className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-black text-slate-800 focus:outline-none cursor-pointer"
+            >
+              <option value="desc">Order: Descending (Z-A / Newest)</option>
+              <option value="asc">Order: Ascending (A-Z / Oldest)</option>
             </select>
 
             <button 
@@ -302,11 +315,9 @@ export default function ContactListPage() {
           </div>
         </div>
 
-        {/* 🛠️ COLLAPSIBLE EXPANDED ADVANCED DRAWER BLOCK */}
+        {/* Collapsible Advanced Filters Drawer */}
         {isDrawerExpanded && (
           <div className="pt-4 border-t border-slate-100 space-y-4 animate-fade-in text-xs font-semibold text-slate-600">
-            
-            {/* TAG FILTER CHIPS */}
             <div className="space-y-1.5">
               <span className="text-[10px] uppercase font-black tracking-wider text-slate-400 block">Filter by Profile Tags</span>
               <div className="flex flex-wrap gap-2">
@@ -321,46 +332,21 @@ export default function ContactListPage() {
               </div>
             </div>
 
-            {/* THREE SPECIFIC SEARCH INPUTS FOR COUNTRY, STATE, CITY */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="space-y-1.5">
                 <label className="text-[10px] uppercase font-black tracking-wider text-slate-400 block">Filter by Country</label>
-                <input 
-                  type="text" 
-                  placeholder="Type and press Enter..." 
-                  value={countryInput} 
-                  onChange={e => setCountryInput(e.target.value)} 
-                  onKeyDown={handleKeyDown}
-                  className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none text-slate-700 font-semibold" 
-                />
+                <input type="text" placeholder="Type and press Enter..." value={countryInput} onChange={e => setCountryInput(e.target.value)} onKeyDown={handleKeyDown} className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none text-slate-700 font-semibold" />
               </div>
-
               <div className="space-y-1.5">
                 <label className="text-[10px] uppercase font-black tracking-wider text-slate-400 block">Filter by State</label>
-                <input 
-                  type="text" 
-                  placeholder="Type and press Enter..." 
-                  value={stateInput} 
-                  onChange={e => setStateInput(e.target.value)} 
-                  onKeyDown={handleKeyDown}
-                  className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none text-slate-700 font-semibold" 
-                />
+                <input type="text" placeholder="Type and press Enter..." value={stateInput} onChange={e => setStateInput(e.target.value)} onKeyDown={handleKeyDown} className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none text-slate-700 font-semibold" />
               </div>
-
               <div className="space-y-1.5">
                 <label className="text-[10px] uppercase font-black tracking-wider text-slate-400 block">Filter by City</label>
-                <input 
-                  type="text" 
-                  placeholder="Type and press Enter..." 
-                  value={cityInput} 
-                  onChange={e => setCityInput(e.target.value)} 
-                  onKeyDown={handleKeyDown}
-                  className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none text-slate-700 font-semibold" 
-                />
+                <input type="text" placeholder="Type and press Enter..." value={cityInput} onChange={e => setCityInput(e.target.value)} onKeyDown={handleKeyDown} className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none text-slate-700 font-semibold" />
               </div>
             </div>
 
-            {/* DATE SELECT FIELD INPUT FIELDS */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-1">
               <div>
                 <span className="text-[10px] uppercase font-black tracking-wider text-slate-400 block mb-1">Created Date</span>
@@ -375,7 +361,6 @@ export default function ContactListPage() {
                 <button type="button" onClick={handleApplyFilters} className="px-5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-black rounded-xl cursor-pointer transition-colors shadow-2xs">Apply Filters</button>
               </div>
             </div>
-
           </div>
         )}
       </div>
@@ -412,10 +397,7 @@ export default function ContactListPage() {
                       <div className="flex flex-wrap gap-1">
                         {contact.tags && contact.tags.length > 0 ? (
                           contact.tags.map((tag: string, index: number) => (
-                            <span 
-                              key={index}
-                              className="px-2 py-0.5 rounded-md bg-blue-50 border border-blue-100 text-blue-600 text-[10px] font-extrabold uppercase tracking-wide"
-                            >
+                            <span key={index} className="px-2 py-0.5 rounded-md bg-blue-50 border border-blue-100 text-blue-600 text-[10px] font-extrabold uppercase tracking-wide">
                               {tag}
                             </span>
                           ))
@@ -466,12 +448,7 @@ export default function ContactListPage() {
         </div>
       </div>
 
-      <DeleteConfirmModal 
-        isOpen={isDeleteOpen} 
-        onClose={() => setIsDeleteOpen(false)} 
-        onConfirm={confirmSoftDelete} 
-        contactName="" 
-      />
+      <DeleteConfirmModal isOpen={isDeleteOpen} onClose={() => setIsDeleteOpen(false)} onConfirm={confirmSoftDelete} contactName="" />
     </div>
   );
 }
