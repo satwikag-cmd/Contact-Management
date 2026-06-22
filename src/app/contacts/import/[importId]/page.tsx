@@ -3,6 +3,7 @@
 import { useParams, useRouter } from 'next/navigation';
 import { useState, useEffect, useRef } from 'react';
 import { apiClient } from '../../../../api/apiClient';
+import { env } from '../../../../utils/env';
 
 interface WebSocketJobPayload {
   status: string;
@@ -36,20 +37,29 @@ export default function ImportJobStatusRoute() {
       try {
         const response = await apiClient.get(`/api/v1/contacts/import/${importId}`);
         const rawData = response.data;
+        console.log("📩 Polling response received:", rawData);
         
+        const total = Number(rawData.total_records ?? rawData.TotalRecords ?? 0);
+        const processed = Number(rawData.processed_records ?? rawData.ProcessedRecords ?? 0);
+        const calculatedPercentage = total > 0 ? ((processed / total) * 100).toFixed(2) : "0.00";
+
         const unifiedPayload: WebSocketJobPayload = {
-          status: rawData.status || 'processing',
-          total_records: Number(rawData.total_records || 0),
-          processed_records: Number(rawData.processed_records || 0),
-          successful_records: Number(rawData.successful_records || 0),
-          failed_records: Number(rawData.failed_records || 0),
-          completion_percentage: String(rawData.completion_percentage || "0.00")
+          status: rawData.status || rawData.Status || 'processing',
+          total_records: total,
+          processed_records: processed,
+          successful_records: Number(rawData.successful_records ?? rawData.SuccessfulRecords ?? 0),
+          failed_records: Number(rawData.failed_records ?? rawData.FailedRecords ?? 0),
+          completion_percentage: String(rawData.completion_percentage ?? rawData.CompletionPercentage ?? calculatedPercentage)
         };
 
         setJob(unifiedPayload);
 
-        if (unifiedPayload.status === 'completed' || unifiedPayload.status === 'failed') {
-          if (pollingIntervalRef.current) clearInterval(pollingIntervalRef.current);
+        const statusLower = unifiedPayload.status.toLowerCase();
+        if (statusLower === 'completed' || statusLower === 'failed') {
+          if (pollingIntervalRef.current) {
+            clearInterval(pollingIntervalRef.current);
+            pollingIntervalRef.current = null;
+          }
         }
       } catch (err) {
         console.warn("Polling lookup tick deferred safely.");
@@ -64,63 +74,81 @@ export default function ImportJobStatusRoute() {
     // 🚀 STRICTMODE MOUNT GUARD TRACKER
     let isComponentMounted = true;
     
-    // 🚀 THE SCOPE FIX: Declare the variable first so it's available inside onopen!
+    // Declare references to be accessible in both connection and cleanup lifecycle
     let socket: WebSocket | null = null;
+    let connectTimeoutId: any = null;
 
     try {
-      const socketHost = '192.168.88.4:8081'; 
-      const wsUrl = `ws://${socketHost}/api/v1/contacts/ws/import/${importId}`;
+      const apiUrl = env.NEXT_PUBLIC_API_URL || '';
+      const socketHost = apiUrl.replace(/^https?:\/\//, '');
+      const wsProtocol = apiUrl.startsWith('https') ? 'wss:' : 'ws:';
+      const wsUrl = `${wsProtocol}//${socketHost}/api/v1/contacts/ws/import/${importId}`;
       
-      // Initialize the socket instance safely
-      socket = new WebSocket(wsUrl);
-
-      socket.onopen = () => {
-        if (!isComponentMounted) {
-          if (socket) socket.close();
-          return;
-        }
-        console.log('--- WEBSOCKET CONNECTION ESTABLISHED WITH HARSHA\'S COMPUTER ---');
-        setConnectionStatus('websocket_live');
-      };
-
-      socket.onmessage = (event) => {
+      // Delay connection slightly to avoid double-connection issues during React StrictMode unmount/remount
+      connectTimeoutId = setTimeout(() => {
         if (!isComponentMounted) return;
+
         try {
-          const rawData = JSON.parse(event.data);
-          const unifiedPayload: WebSocketJobPayload = {
-            status: rawData.status || rawData.Status || 'processing',
-            total_records: Number(rawData.total_records ?? rawData.TotalRecords ?? 0),
-            processed_records: Number(rawData.processed_records ?? rawData.ProcessedRecords ?? 0),
-            successful_records: Number(rawData.successful_records ?? rawData.SuccessfulRecords ?? 0),
-            failed_records: Number(rawData.failed_records ?? rawData.FailedRecords ?? 0),
-            completion_percentage: String(rawData.completion_percentage ?? rawData.CompletionPercentage ?? "0.00")
+          socket = new WebSocket(wsUrl);
+
+          socket.onopen = () => {
+            if (!isComponentMounted) {
+              if (socket) socket.close();
+              return;
+            }
+            console.log('--- WEBSOCKET CONNECTION ESTABLISHED WITH HARSHA\'S COMPUTER ---');
+            setConnectionStatus('websocket_live');
           };
 
-          if (pollingIntervalRef.current) {
-            clearInterval(pollingIntervalRef.current);
-            pollingIntervalRef.current = null;
-            setConnectionStatus('websocket_live');
-          }
+          socket.onmessage = (event) => {
+            if (!isComponentMounted) return;
+            console.log("📩 WebSocket message received:", event.data);
+            console.log(
+              "WS Update:",
+              JSON.parse(event.data).processed_records
+            );
+            try {
+              const rawData = JSON.parse(event.data);
+              const total = Number(rawData.total_records ?? rawData.TotalRecords ?? 0);
+              const processed = Number(rawData.processed_records ?? rawData.ProcessedRecords ?? 0);
+              const calculatedPercentage = total > 0 ? ((processed / total) * 100).toFixed(2) : "0.00";
 
-          setJob(unifiedPayload);
+              const unifiedPayload: WebSocketJobPayload = {
+                status: rawData.status || rawData.Status || 'processing',
+                total_records: total,
+                processed_records: processed,
+                successful_records: Number(rawData.successful_records ?? rawData.SuccessfulRecords ?? 0),
+                failed_records: Number(rawData.failed_records ?? rawData.FailedRecords ?? 0),
+                completion_percentage: String(rawData.completion_percentage ?? rawData.CompletionPercentage ?? calculatedPercentage)
+              };
+
+              if (pollingIntervalRef.current) {
+                clearInterval(pollingIntervalRef.current);
+                pollingIntervalRef.current = null;
+                setConnectionStatus('websocket_live');
+              }
+
+              setJob(unifiedPayload);
+            } catch (err) {
+              console.warn("Muted background parsing text packet:", err);
+            }
+          };
+
+          socket.onerror = (error) => {
+            if (!isComponentMounted) return;
+            console.warn("WebSocket handshake missed. Shifting execution to backup channels...");
+            triggerFallbackPolling();
+          };
+
+          socket.onclose = (event) => {
+            if (!isComponentMounted) return;
+            console.log(`--- WEBSOCKET CHANNEL CLOSED --- Code: ${event.code}, Reason: ${event.reason || 'No reason provided'}`);
+            triggerFallbackPolling();
+          };
         } catch (err) {
-          console.warn("Muted background parsing text packet:", err);
-        }
-      };
-
-      socket.onerror = (error) => {
-        if (!isComponentMounted) return;
-        console.warn("WebSocket handshake missed. Shifting execution to backup channels...");
-        triggerFallbackPolling();
-      };
-
-      socket.onclose = () => {
-        if (!isComponentMounted) return;
-        console.log('--- WEBSOCKET CHANNEL CLOSED ---');
-        if (connectionStatus === 'connecting') {
           triggerFallbackPolling();
         }
-      };
+      }, 100);
 
     } catch (err) {
       triggerFallbackPolling();
@@ -128,12 +156,17 @@ export default function ImportJobStatusRoute() {
 
     // Cleanup lifecycle
     return () => {
+      console.log("🧹 Cleanup running, closing connections/timers for importId:", importId);
       isComponentMounted = false;
+      if (connectTimeoutId) {
+        clearTimeout(connectTimeoutId);
+      }
       if (socket) {
         socket.close();
       }
       if (pollingIntervalRef.current) {
         clearInterval(pollingIntervalRef.current);
+        pollingIntervalRef.current = null;
       }
     };
   }, [importId]);

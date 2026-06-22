@@ -1,4 +1,3 @@
-// src/utils/env.ts
 export const env = {
   // 💻 Hardcoding his exact laptop IP address right here:
   NEXT_PUBLIC_API_URL: 'http://192.168.88.25:8081',
